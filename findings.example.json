@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "engagement_id": "example-engagement-001",
+  "findings": [],
+  "control_observations": [],
+  "attack_paths": [],
+  "coverage": {
+    "tested": [],
+    "untested": ["No assessment has been executed; this is only a template."],
+    "limitations": ["No findings can be inferred from this example."]
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AEGIS canonical findings data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "engagement_id", "findings", "control_observations", "attack_paths", "coverage"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "engagement_id": {"type": "string", "minLength": 8},
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "control_observations": {"type": "array", "items": {"$ref": "#/$defs/control"}},
+    "attack_paths": {"type": "array", "items": {"$ref": "#/$defs/path"}},
+    "coverage": {"type": "object", "additionalProperties": false,
+      "required": ["tested", "untested", "limitations"],
+      "properties": {
+        "tested": {"type": "array", "items": {"type": "string"}},
+        "untested": {"type": "array", "items": {"type": "string"}},
+        "limitations": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  },
+  "$defs": {
+    "nonempty": {"type": "string", "minLength": 1},
+    "finding": {"type": "object", "additionalProperties": false,
+      "required": ["id", "title", "status", "severity", "confidence", "affected_asset", "attacker_prerequisites", "expected_behavior", "observed_behavior", "reproduction_steps", "evidence_refs", "demonstrated_impact", "root_cause", "remediation"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonempty"},
+        "title": {"$ref": "#/$defs/nonempty"},
+        "status": {"enum": ["confirmed", "likely", "inconclusive", "disproved", "duplicate"]},
+        "severity": {"enum": ["critical", "high", "medium", "low", "informational"]},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "affected_asset": {"$ref": "#/$defs/nonempty"},
+        "affected_version": {"type": ["string", "null"]},
+        "attacker_prerequisites": {"type": "array", "items": {"type": "string"}},
+        "expected_behavior": {"$ref": "#/$defs/nonempty"},
+        "observed_behavior": {"$ref": "#/$defs/nonempty"},
+        "reproduction_steps": {"type": "array", "items": {"type": "string"}},
+        "evidence_refs": {"type": "array", "items": {"type": "string"}},
+        "demonstrated_impact": {"$ref": "#/$defs/nonempty"},
+        "root_cause": {"$ref": "#/$defs/nonempty"},
+        "remediation": {"$ref": "#/$defs/nonempty"},
+        "attack_chain_refs": {"type": "array", "items": {"type": "string"}},
+        "cvss_assessment": {"oneOf": [
+          {"type": "object", "additionalProperties": false, "required": ["applicable", "vector", "rationale"],
+            "properties": {"applicable": {"const": true}, "vector": {"type": "string", "pattern": "^CVSS:"}, "rationale": {"$ref": "#/$defs/nonempty"}}},
+          {"type": "object", "additionalProperties": false, "required": ["applicable", "reason"],
+            "properties": {"applicable": {"const": false}, "reason": {"$ref": "#/$defs/nonempty"}}}
+        ]},
+        "regression_test_guidance": {"type": "array", "items": {"type": "string"}}
+      },
+      "if": {"properties": {"severity": {"enum": ["high", "critical"]}}, "required": ["severity"]},
+      "then": {"required": ["cvss_assessment", "regression_test_guidance"]}
+    },
+    "control": {"type": "object", "additionalProperties": false,
+      "required": ["id", "target", "control", "outcome", "confidence", "evidence_refs"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonempty"},
+        "target": {"$ref": "#/$defs/nonempty"},
+        "control": {"$ref": "#/$defs/nonempty"},
+        "outcome": {"enum": ["verified_block", "bypassed", "observed_not_proven"]},
+        "confidence": {"enum": ["high", "medium", "low"]},
+        "evidence_refs": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "path": {"type": "object", "additionalProperties": false,
+      "required": ["id", "starting_access", "verified_transitions", "final_demonstrated_access", "stopping_boundary"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonempty"},
+        "starting_access": {"$ref": "#/$defs/nonempty"},
+        "verified_transitions": {"type": "array", "items": {"type": "string"}},
+        "final_demonstrated_access": {"$ref": "#/$defs/nonempty"},
+        "stopping_boundary": {"$ref": "#/$defs/nonempty"}
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "configured": false,
+  "operator": {
+    "principal": "operator@example.invalid",
+    "signer_id": "example-operator",
+    "public_key_pem_path": "/etc/aegis/keys/operator-ed25519.pub.pem"
+  },
+  "approved_engagement_ids": [],
+  "revoked_engagement_ids": [],
+  "allowed_repository_roots": [],
+  "allowed_origins": [],
+  "allowed_networks": [],
+  "approved_methods": [],
+  "max_authorization_hours": 72,
+  "limits_ceiling": {
+    "engagement_runtime_minutes": 480,
+    "max_single_run_minutes": 120,
+    "deterministic_hypothesis_minutes": 30,
+    "deterministic_failed_experiments": 6,
+    "nondeterministic_max_trials": 500,
+    "max_total_requests": 5000,
+    "max_requests_per_minute_per_origin": 30,
+    "max_concurrent_requests": 2,
+    "max_response_body_bytes": 1048576,
+    "max_total_evidence_bytes": 104857600,
+    "max_fuzz_minutes_per_target": 30
+  },
+  "allowed_report_roots": [],
+  "allowed_alert_roots": []
+}

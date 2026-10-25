@@ -1,0 +1,3 @@
+cryptography>=44,<48
+jsonschema>=4.20,<5
+PyYAML>=6,<7

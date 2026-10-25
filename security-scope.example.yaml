@@ -1,0 +1,64 @@
+# EXAMPLE ONLY — deliberately not authorized. Fill this from an independent operator
+# process, sign its exact bytes, and use a separately pinned trust policy.
+schema_version: 1
+engagement:
+  id: "example-engagement-001"
+  authorized_by: "operator@example.invalid"
+  signer_id: "example-operator"
+  valid_from_utc: "2026-10-26T13:00:00Z"
+  valid_until_utc: "2026-10-27T13:00:00Z"
+
+targets:
+  repositories:
+    - "/workspace/authorized-application"
+  origins:
+    - "https://staging.example.invalid"
+  networks: [] # means absolutely none authorized
+  excluded_origins: []
+  excluded_networks: []
+
+accounts:
+  - role: "ordinary_user"
+    secret_ref: "vault://aegis/example/ordinary"
+    allowed_origins:
+      - "https://staging.example.invalid"
+  - role: "privileged_test_user"
+    secret_ref: "vault://aegis/example/privileged"
+    allowed_origins:
+      - "https://staging.example.invalid"
+
+methods:
+  allowed:
+    - source_review
+    - dependency_analysis
+    - controlled_http_testing
+    - isolated_exploit_validation
+    - bounded_fuzzing
+  requires_approval:
+    - production_state_changes
+    - high_impact_exploitation
+    - destructive_tests
+    - service_disruption
+    - real_data_access
+    - credential_use_outside_test
+    - persistent_changes
+
+limits:
+  engagement_runtime_minutes: 480   # cumulative across runs; persistent runner ledger
+  max_single_run_minutes: 120        # distinct from calendar authorization window
+  deterministic_hypothesis_minutes: 15
+  deterministic_failed_experiments: 3
+  nondeterministic_max_trials: 400
+  max_total_requests: 4000
+  max_requests_per_minute_per_origin: 30
+  max_concurrent_requests: 2
+  max_response_body_bytes: 1048576
+  max_total_evidence_bytes: 104857600
+  max_fuzz_minutes_per_target: 15
+
+reporting:
+  output_dir: "/var/lib/aegis/reports/example-engagement-001"
+  summary_channel: "invoking_session"
+  critical_alert:
+    type: "file"
+    path: "/var/lib/aegis/alerts/example-engagement-001.ndjson"
