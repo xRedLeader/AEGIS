@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AEGIS v1.3: *trusted* Linux namespace launcher for the fixed static worker.
+"""AEGIS v1.3.1: *trusted* Linux namespace launcher for the fixed static worker.
 
 Not an agent-facing general command runner. The supervisor launches this through
 unshare(1) under a non-root service identity, inside new user+mount+net+PID
@@ -37,7 +37,6 @@ SECBIT_NOROOT_LOCKED = 2
 SECBIT_NO_SETUID_FIXUP = 4
 SECBIT_NO_SETUID_FIXUP_LOCKED = 8
 CAP_LAST_LIMIT = 64
-SCMP_ACT_ALLOW = 0x7FFF0000
 SCMP_ACT_ERRNO_EPERM = 0x00050000 | errno.EPERM
 
 # These are the only library/script sources the confined worker can see.
@@ -109,10 +108,41 @@ def _drop_capabilities(lib):
         raise SandboxFailure('cannot clear effective/permitted capabilities')
 
 
-def _deny_sensitive_syscalls(sec):
-    """Install kernel-level seccomp filter, denying network and escape syscalls.
+# The trusted, fixed worker profile is a *positive* set. Unknown syscalls,
+# including syscalls added by future kernels, get EPERM by default. The set is
+# intentionally not appropriate for shell commands, exploit tools, or arbitrary
+# third-party processes; those require separately reviewed sandbox profiles.
+# Some syscalls (including execve and prctl) are required by this launch design
+# or the operator-only kernel diagnostic. This is not an all-purpose sandbox.
+WORKER_SYSCALL_ALLOWLIST = (
+    # Basic Unix file and directory reads. RO mounts prevent mutation.
+    'read', 'write', 'readv', 'writev', 'pread64', 'close', 'lseek',
+    'fstat', 'newfstatat', 'stat', 'lstat', 'statx', 'getdents64',
+    'open', 'openat', 'readlink', 'readlinkat', 'access',
+    'faccessat', 'faccessat2', 'fcntl', 'getcwd',
+    # Python ELF loader, allocator and threads' runtime bookkeeping.
+    'mmap', 'mprotect', 'munmap', 'mremap', 'madvise', 'brk',
+    'arch_prctl', 'set_tid_address', 'set_robust_list', 'rseq', 'futex',
+    'rt_sigaction', 'rt_sigprocmask', 'rt_sigreturn', 'sigaltstack',
+    'rt_sigpending', 'rt_sigsuspend',
+    # Monotonic timing, entropy, metadata and harmless scheduling.
+    'clock_gettime', 'clock_getres', 'gettimeofday', 'time',
+    'nanosleep', 'clock_nanosleep', 'getrandom', 'uname',
+    'getpid', 'gettid', 'getuid', 'geteuid', 'getgid', 'getegid',
+    'getresuid', 'getresgid', 'getrlimit', 'prlimit64', 'getrusage',
+    'sysinfo', 'sched_yield',
+    # The launcher's one fixed exec; diagnostic only observes prctl/capget.
+    'execve', 'prctl', 'capget',
+    # Clean process termination and restart.
+    'exit', 'exit_group', 'restart_syscall',
+)
 
-    Needed libseccomp is a hard requirement, not optional; fail closed if absent.
+
+def _install_default_deny_seccomp(sec):
+    """Load a libseccomp allowlist (all other syscalls return EPERM).
+
+    The final known executable is invoked by os.execv *after* this filter is
+    installed. No rule here can be relaxed by an unprivileged descendant.
     """
     sec.seccomp_init.argtypes = [ctypes.c_uint32]
     sec.seccomp_init.restype = ctypes.c_void_p
@@ -124,30 +154,35 @@ def _deny_sensitive_syscalls(sec):
     sec.seccomp_load.restype = ctypes.c_int
     sec.seccomp_release.argtypes = [ctypes.c_void_p]
     sec.seccomp_release.restype = None
-    ctx = sec.seccomp_init(SCMP_ACT_ALLOW)
+    ctx = sec.seccomp_init(SCMP_ACT_ERRNO_EPERM)
     if not ctx:
-        raise SandboxFailure('cannot initialize syscall filter')
+        raise SandboxFailure('cannot initialize default-deny syscall filter')
     try:
-        forbidden = (
-            'socket', 'socketpair', 'connect', 'bind', 'listen', 'accept',
-            'accept4', 'sendto', 'sendmsg', 'sendmmsg', 'recvfrom', 'recvmsg',
-            'recvmmsg', 'getsockopt', 'setsockopt', 'shutdown',
-            'mount', 'umount2', 'pivot_root', 'unshare', 'setns', 'chroot',
-            'ptrace', 'bpf', 'userfaultfd', 'keyctl', 'open_by_handle_at',
-            'fsopen', 'fsconfig', 'fsmount', 'move_mount', 'open_tree',
-            'mount_setattr', 'clone3', 'clone', 'fork', 'vfork',
-            'io_uring_setup', 'io_uring_enter', 'io_uring_register',
-            'perf_event_open', 'process_vm_readv', 'process_vm_writev',
-            'pidfd_getfd',
-        )
-        for name in forbidden:
-            number = sec.seccomp_syscall_resolve_name(name.encode())
+        for name in WORKER_SYSCALL_ALLOWLIST:
+            number = sec.seccomp_syscall_resolve_name(name.encode('ascii'))
             if number < 0:
-                continue  # absent from this architecture; not a viable syscall
-            if sec.seccomp_rule_add(ctx, SCMP_ACT_ERRNO_EPERM, number, 0) != 0:
-                raise SandboxFailure(f'cannot deny syscall {name}')
+                # On this ABI an unavailable syscall cannot be invoked. An
+                # available but missing syscall gets EPERM and fails closed.
+                continue
+            if sec.seccomp_rule_add(ctx, 0x7FFF0000, number, 0) != 0:
+                raise SandboxFailure(f'cannot allow required syscall {name}')
+        # Python 3.13 opens the script with a file-descriptor ioctl.
+        # Allow only FIOCLEX (mark close-on-exec), not arbitrary ioctl codes.
+        class ArgCmp(ctypes.Structure):
+            _fields_ = [('arg', ctypes.c_uint32), ('op', ctypes.c_uint32),
+                        ('datum_a', ctypes.c_uint64), ('datum_b', ctypes.c_uint64)]
+        sec.seccomp_rule_add_array.argtypes = [ctypes.c_void_p, ctypes.c_uint32,
+                                               ctypes.c_int, ctypes.c_uint,
+                                               ctypes.POINTER(ArgCmp)]
+        sec.seccomp_rule_add_array.restype = ctypes.c_int
+        ioctl_num = sec.seccomp_syscall_resolve_name(b'ioctl')
+        if ioctl_num < 0:
+            raise SandboxFailure('ioctl syscall missing on runtime architecture')
+        eq = ArgCmp(1, 4, 0x5451, 0)  # SCMP_CMP_EQ, Linux FIOCLEX
+        if sec.seccomp_rule_add_array(ctx, 0x7FFF0000, ioctl_num, 1, ctypes.byref(eq)) != 0:
+            raise SandboxFailure('cannot add restricted ioctl FIOCLEX rule')
         if sec.seccomp_load(ctx) != 0:
-            raise SandboxFailure('cannot load syscall filter')
+            raise SandboxFailure('cannot load default-deny syscall filter')
     finally:
         sec.seccomp_release(ctx)
 
@@ -212,7 +247,7 @@ def _setup(args):
     if lib.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
         raise SandboxFailure('cannot set no_new_privs')
     _drop_capabilities(lib)
-    _deny_sensitive_syscalls(sec)
+    _install_default_deny_seccomp(sec)
     if args.mode == 'scan':
         argv = [str(SYSTEM_PYTHON), '-I', '-S', '-B', '/app/worker.py',
                 '--repo', '/repo', '--max-files', '1000',

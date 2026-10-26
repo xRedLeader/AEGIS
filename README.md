@@ -1,12 +1,12 @@
-# AEGIS v1.3 — kernel-isolated local review worker
+# AEGIS v1.3.1 — kernel-isolated local review worker
 
-**Provider-neutral security research platform, built incrementally.** v1.3 retains the signed, operator-scoped supervisor and persistent budget/audit system from v1.2, and now runs its fixed read-only static scanner under **actual Linux kernel confinement**. It is not yet a general autonomous pentesting platform. Live target probing, user-provided commands, credential use, exploit execution and network access are intentionally unavailable.
+**Provider-neutral security research platform, built incrementally.** v1.3.1 retains the signed, operator-scoped supervisor and persistent budget/audit system from v1.2, and now runs its fixed read-only static scanner under **actual Linux kernel confinement**. It is not yet a general autonomous pentesting platform. Live target probing, user-provided commands, credential use, exploit execution and network access are intentionally unavailable.
 
-## What ships in v1.3
+## What ships in v1.3.1
 
 - **Signed authorization:** Ed25519 manifest checked against a separate operator-pinned trust policy; engagement, targets, methods, report paths, expiry, and revocation freshness are revalidated before and during the operation.
 - **Kernel-enforced worker isolation:** a new user, mount, network, and PID namespace via `unshare`, an 8 MiB temporary root filesystem, read-only mounts of `/usr`, the one trusted scanner, and the authorized repo, plus a process with no visible host `/etc`, `/proc`, supervisor state, signing keys, or other repositories.
-- **System-call filtering:** `libseccomp` denies socket creation/communication, process spawning, namespace/mount changes, ptrace, keyring calls, and relevant bypass syscalls; Linux capabilities are cleared and `no_new_privs` is set. CPU, address-space, open-file and output-file limits apply.
+- **System-call filtering:** `libseccomp` now defaults to EPERM and positively allows only syscalls required for this fixed Python worker, with an argument-restricted FIOCLEX ioctl; Linux capabilities are cleared and `no_new_privs` is set. CPU, address-space, open-file and output-file limits apply.
 - **Pinned source root:** supervisor passes an already-open directory descriptor; the launcher verifies it is still the same device+inode after bind-mounting and before the trusted worker runs.
 - **Control continuity:** accumulated runtime/evidence budgets are reserved in SQLite, emergency stop and revocations terminate work, and result artifacts/audit records remain outside repositories. Scanner matches remain unverified leads, **never confirmed vulnerabilities**.
 - **Operator-only kernel diagnostic:** `aegis_sandbox_check.py` executes a fixed probe that verifies 11 real allow/deny behaviors; it cannot launch arbitrary user commands.
@@ -31,7 +31,7 @@ python -m unittest discover -s tests -v
 python aegis_demo.py
 ```
 
-The diagnostic must report `KERNEL_ISOLATION_VERIFIED_IN_THIS_ENVIRONMENT` and every check `true`. The demo creates an ephemeral signing key, sample repo and policy, runs one real sandboxed static assessment, checks its evidence and audit, and removes temporary data. It contacts **no external hosts**.
+The diagnostic must report `KERNEL_ISOLATION_VERIFIED_IN_THIS_ENVIRONMENT` and every check `true`. The demo creates an ephemeral signing key, sample repo and policy, runs one real sandboxed static assessment, checks its evidence, locally chained audit, and separate ephemeral signed audit checkpoint, then removes temporary data. It contacts **no external hosts**.
 
 ## Real scoped local assessment (operator-owned service)
 
@@ -65,8 +65,10 @@ python aegis_supervisor.py stop --engagement-id ENGAGEMENT_ID
 
 ## Limitations and threat model
 
-**This is OS isolation for ONE known, trusted source-review worker, not confinement of arbitrary adversarial binaries or the AI orchestrator.** The supervisor only protects calls it mediates. It does not configure cgroups, external egress filters for future network tools, an authenticated approvals server, remote revocation updates, external audit anchoring, a credential broker, alert delivery, or any active test capability. The root filesystem is immutable to the jailed worker, but the operator-controlled host and an agent with independent shell access remain outside this boundary. Each deployment must pass the actual sandbox diagnostic and receive independent security review before handling hostile binaries. More in [`SECURITY_MODEL.md`](SECURITY_MODEL.md).
+**This is OS isolation for ONE known, trusted source-review worker, not confinement of arbitrary adversarial binaries or the AI orchestrator.** The supervisor only protects calls it mediates. It does not configure cgroups, external egress filters for future network tools, an authenticated approvals server, remote revocation updates, automated external audit retention/monitoring, a credential broker, alert delivery, or any active test capability. The root filesystem is immutable to the jailed worker, but the operator-controlled host and an agent with independent shell access remain outside this boundary. Each deployment must pass the actual sandbox diagnostic and receive independent security review before handling hostile binaries. More in [`SECURITY_MODEL.md`](SECURITY_MODEL.md).
 
-The syscall policy is intentionally restrictive, including denying forks/clones. Some future scanner tools will require separate security profiles—not an unreviewed relaxation of this profile. Runtime reservations are charged in full even if a scan fails. Some protective checks are limited by source, kernel, package, and host configuration. **Do not expose live network scanning or arbitrary exploit execution as v1.3 actions.**
+The syscall policy is intentionally restrictive, including denying forks/clones. This default-deny profile is for the current Python/Linux ABI; future scanner tools require separately audited profiles—not an unreviewed relaxation of this profile. Runtime reservations are charged in full even if a scan fails. Some protective checks are limited by source, kernel, package, and host configuration. **Do not expose live network scanning or arbitrary exploit execution as v1.3.1 actions.**
+
+Operator-side signed audit checkpoints are now available via `aegis_audit.py`: see [`AUDIT_CHECKPOINTS.md`](AUDIT_CHECKPOINTS.md). This detects whole-ledger rewriting only for portions that have been independently signed and retained off-box. The local `audit` command alone remains insufficient.
 
 For the next milestone, see [`MILESTONES.md`](MILESTONES.md). v1.4 will add a separate, narrowly scoped HTTP testing gateway while keeping the sandbox's default network-deny policy intact.

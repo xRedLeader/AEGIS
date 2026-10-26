@@ -1,6 +1,6 @@
 # AEGIS runtime supervisor — implementation contract
 
-**Status: PARTIALLY IMPLEMENTED in v1.3.** `aegis_supervisor.py` now launches the **fixed, read-only static reviewer** under actual rootless Linux user/mount/net/PID namespaces, read-only binds, a small jailed filesystem, dropped capabilities and libseccomp. Signed authorization, cumulative ledger, stop, revocation checks and audit are preserved. This does NOT isolate the agent itself, run arbitrary third-party tools safely, or allow outbound targets. The HTTP gateway, cgroup-v2 quotas, credential broker, authenticated approvals, external revocation updater, externally anchored audit and alert delivery remain future requirements. See [`SECURITY_MODEL.md`](SECURITY_MODEL.md) for observed enforcement versus residual risks.
+**Status: PARTIALLY IMPLEMENTED through v1.3.1.** `aegis_supervisor.py` now launches the **fixed, read-only static reviewer** under actual rootless Linux user/mount/net/PID namespaces, read-only binds, a small jailed filesystem, dropped capabilities and libseccomp. Signed authorization, cumulative ledger, stop, revocation checks and audit are preserved. This does NOT isolate the agent itself, run arbitrary third-party tools safely, or allow outbound targets. The HTTP gateway, cgroup-v2 quotas, credential broker, authenticated approvals, external revocation updater, automatic off-box audit checkpoint retention/verification and alert delivery remain future requirements. Manually signed audit checkpoints were added in v1.3.1. See [`SECURITY_MODEL.md`](SECURITY_MODEL.md) for observed enforcement versus residual risks.
 
 ## Trust and separation
 
@@ -12,7 +12,7 @@ Operator-controlled approval registry / trust policy |   (agent cannot modify)
                                       v
                               preflight (verify)
                                       v
-                   trusted local supervisor (PARTIAL v1.3)
+                   trusted local supervisor (PARTIAL v1.3.1)
                        |         |          |
                   restricted   action     audit / budget
                    worker      gateway       ledger
@@ -20,7 +20,7 @@ Operator-controlled approval registry / trust policy |   (agent cannot modify)
              assessment tools / test credentials
 ```
 
-**Target architecture:** the supervisor must own the network namespace, OS credentials, tool execution permissions, trusted clock, approval store, and audited budget ledger. v1.3 now owns a kernel-confined offline static reviewer, but does **not** own a network-enabled gateway, external credentials or the AI model process itself. The agent must ultimately receive only scoped tool interfaces. No agent instruction or YAML content is itself a sandbox.
+**Target architecture:** the supervisor must own the network namespace, OS credentials, tool execution permissions, trusted clock, approval store, and audited budget ledger. v1.3.1 now owns a kernel-confined offline static reviewer, but does **not** own a network-enabled gateway, external credentials or the AI model process itself. The agent must ultimately receive only scoped tool interfaces. No agent instruction or YAML content is itself a sandbox.
 
 ## Required additional controls before live assessments
 
@@ -56,4 +56,4 @@ The supervisor cannot be considered ready until integration tests demonstrate **
 
 ## Definition of done
 
-**v1.3 is accepted only for bounded local source review.** It has executable scope checks, a SQLite ledger, a kill switch and an OS-contained trusted reviewer, but does not constitute a general-purpose security sandbox or confine the model. Active network assessments may be enabled only after independently reviewed OS/network enforcement and passing integration tests of the deployed supervisor. This document is a contract for future versions, not a security guarantee.
+**v1.3.1 is accepted only for bounded local source review.** It has executable scope checks, a SQLite ledger, a kill switch and an OS-contained trusted reviewer, but does not constitute a general-purpose security sandbox or confine the model. Active network assessments may be enabled only after independently reviewed OS/network enforcement and passing integration tests of the deployed supervisor. This document is a contract for future versions, not a security guarantee.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AEGIS v1.3 local supervisor with a rootless Linux namespace worker.
+"""AEGIS v1.3.1 local supervisor with a rootless Linux namespace worker.
 
 ONLY supports bounded read-only source review. The fixed worker runs in a
 Linux user/mount/network/PID namespace with a sealed filesystem and seccomp.
@@ -26,6 +26,7 @@ import uuid
 
 import yaml
 from aegis_preflight import PreflightError, UniqueKeyLoader, validate
+from aegis_audit import AuditError, verify_rows
 
 HERE = Path(__file__).resolve().parent
 SCAN_RESULT_RESERVATION = 32 * 1024
@@ -157,6 +158,8 @@ class AegisSupervisor:
                 con.execute("CREATE TABLE IF NOT EXISTS usage (engagement_id TEXT PRIMARY KEY, manifest_sha TEXT NOT NULL, reserved_seconds INTEGER NOT NULL, reserved_evidence_bytes INTEGER NOT NULL)")
                 con.execute("CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, engagement_id TEXT NOT NULL, status TEXT NOT NULL, budget_seconds INTEGER NOT NULL, started_utc TEXT NOT NULL, ended_utc TEXT)")
                 con.execute("CREATE TABLE IF NOT EXISTS audit (seq INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT NOT NULL, previous_hash TEXT NOT NULL, digest TEXT NOT NULL)")
+                con.execute("CREATE TABLE IF NOT EXISTS ledger_meta (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                con.execute("INSERT OR IGNORE INTO ledger_meta(name,value) VALUES('ledger_id',?)", (str(uuid.uuid4()),))
                 yield con
             finally:
                 con.close()
@@ -182,6 +185,13 @@ class AegisSupervisor:
         with self._database() as con:
             try:
                 con.execute("BEGIN IMMEDIATE")
+                # Detect non-recomputed edits to the local hash chain before
+                # allocating more budget. Full-ledger rewrites require an
+                # independently retained signed checkpoint to detect.
+                try:
+                    verify_rows(con.execute("SELECT seq,event,previous_hash,digest FROM audit ORDER BY seq").fetchall())
+                except AuditError as exc:
+                    deny(f"audit integrity check failed: {exc}")
                 row = con.execute("SELECT manifest_sha,reserved_seconds,reserved_evidence_bytes FROM usage WHERE engagement_id=?", (eid,)).fetchone()
                 if row is None:
                     con.execute("INSERT INTO usage VALUES(?,?,0,0)", (eid, info["manifest_sha256"]))
@@ -259,7 +269,7 @@ class AegisSupervisor:
 
     def scan(self, repo: Path, budget_seconds: int = 15) -> dict:
         if sys.platform != "linux" or not hasattr(os, "O_NOFOLLOW"):
-            deny("v1.3 requires Linux with POSIX no-follow support")
+            deny("v1.3.1 requires Linux with POSIX no-follow support")
         if os.geteuid() == 0:
             deny("v1.3 worker must launch from a non-root service identity")
         info, m = self._guard()
@@ -308,7 +318,7 @@ class AegisSupervisor:
                 self._finish(eid, run_id, "completed")
                 return {"status": "COMPLETED_STATIC_REVIEW_ONLY", "engagement_id": eid,
                         "run_id": run_id, "report": path, "summary": result["summary"],
-                        "isolation": "LINUX_ROOTLESS_NAMESPACES_READONLY_ROOT_SECCOMP",
+                        "isolation": "LINUX_ROOTLESS_NAMESPACES_READONLY_ROOT_SECCOMP_DEFAULT_DENY",
                         "unverified_leads": len(result["candidates"]),
                         "reserved_runtime_seconds": budget_seconds}
             except BaseException as exc:
@@ -336,13 +346,13 @@ class AegisSupervisor:
 
     def verify_audit_chain(self) -> bool:
         with self._database() as con:
-            rows = con.execute("SELECT event,previous_hash,digest FROM audit ORDER BY seq ASC").fetchall()
-            expected = "0" * 64
-            for event, prev, digest in rows:
-                if prev != expected or hashlib.sha256((prev + "\n" + event).encode()).hexdigest() != digest:
-                    return False
-                expected = digest
-        return True
+            try:
+                verify_rows(con.execute(
+                    "SELECT seq,event,previous_hash,digest FROM audit ORDER BY seq"
+                ).fetchall())
+                return True
+            except AuditError:
+                return False
 
 
 def operator_stop(state_root: Path, eid: str):
@@ -393,7 +403,7 @@ def main(argv=None):
             output = s.usage(info["engagement_id"])
         else:
             s._guard()
-            output = {"status": "AUDIT_VALID" if s.verify_audit_chain() else "AUDIT_INVALID"}
+            output = {"status": "LOCAL_AUDIT_CHAIN_VALID_UNANCHORED" if s.verify_audit_chain() else "AUDIT_INVALID"}
         print(json.dumps(output, indent=2))
         return 0 if output.get("status") != "AUDIT_INVALID" else 3
     except (ExecutionDenied, PreflightError, OSError, ValueError, sqlite3.Error) as exc:

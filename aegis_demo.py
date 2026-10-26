@@ -13,8 +13,9 @@ import tempfile
 import yaml
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
 from aegis_preflight import SIGNING_CONTEXT
+from aegis_audit import create_checkpoint, verify_checkpoint
 from aegis_supervisor import AegisSupervisor, ExecutionDenied
 
 HERE = Path(__file__).resolve().parent
@@ -73,12 +74,26 @@ def main():
         findings = json.loads(Path(result["report"]).read_text())
         if not supervisor.verify_audit_chain() or len(findings["candidates"]) != 1:
             raise RuntimeError("demo validation failed")
+        # Operator-side, independent ephemeral audit signing key for the demo.
+        audit_key = Ed25519PrivateKey.generate()
+        audit_private = base / "audit-private.pem"
+        audit_public = base / "audit-public.pem"
+        audit_private.write_bytes(audit_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
+        audit_public.write_bytes(audit_key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo))
+        checkpoints = base / "operator-checkpoints"
+        checkpoints.mkdir(mode=0o700)
+        checkpoint = checkpoints / "demo.json"
+        create_checkpoint(state, audit_private, checkpoint)
+        anchor_result = verify_checkpoint(state, checkpoint, audit_public)
+        if anchor_result["status"] != "AUDIT_ANCHOR_VERIFIED":
+            raise RuntimeError("signed audit checkpoint failed demo verification")
         # Don't print the temp report path; the temp directory is immediately deleted.
         print(json.dumps({"demo_status": "PASS", "runtime_status": result["status"],
                           "static_review_leads": len(findings["candidates"]),
                           "lead_classification": findings["candidates"][0]["status"],
                           "budget_reserved_seconds": supervisor.usage(engagement_id)["reserved_seconds"],
-                          "audit_chain_valid": True, "network_requests": 0}, indent=2))
+                          "audit_chain_valid": True, "signed_audit_anchor": "VERIFIED",
+                          "network_requests": 0}, indent=2))
 
 
 if __name__ == "__main__":

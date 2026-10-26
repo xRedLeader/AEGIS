@@ -21,7 +21,9 @@ class LinuxIsolationIntegrationTests(unittest.TestCase):
     def test_kernel_enforces_sandbox_prohibitions(self):
         checks = run_check()
         self.assertEqual(checks['status'], 'KERNEL_ISOLATION_VERIFIED_IN_THIS_ENVIRONMENT')
-        self.assertGreaterEqual(len(checks['checks']), 11)
+        self.assertGreaterEqual(len(checks['checks']), 13)
+        self.assertTrue(checks['checks']['unlisted_getppid_denied'])
+        self.assertTrue(checks['checks']['other_ioctl_denied'])
         self.assertTrue(all(checks['checks'].values()))
 
     def test_direct_launcher_outside_namespaces_fails_closed(self):
@@ -65,7 +67,7 @@ class EnforcedWorkerIntegrationTests(unittest.TestCase):
 
     def test_real_worker_result_states_os_isolation(self):
         result = self.supervisor().scan(self.fx.repo, 5)
-        self.assertEqual(result['isolation'], 'LINUX_ROOTLESS_NAMESPACES_READONLY_ROOT_SECCOMP')
+        self.assertEqual(result['isolation'], 'LINUX_ROOTLESS_NAMESPACES_READONLY_ROOT_SECCOMP_DEFAULT_DENY')
         self.assertEqual(result['unverified_leads'], 1)
 
     def test_no_fallback_if_sandbox_command_fails(self):

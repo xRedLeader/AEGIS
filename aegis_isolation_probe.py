@@ -42,6 +42,20 @@ def fork_denied():
     return False
 
 
+def _denied_syscall(name, *args):
+    sec = ctypes.CDLL('libseccomp.so.2')
+    sec.seccomp_syscall_resolve_name.argtypes = [ctypes.c_char_p]
+    sec.seccomp_syscall_resolve_name.restype = ctypes.c_int
+    number = sec.seccomp_syscall_resolve_name(name.encode('ascii'))
+    if number < 0:
+        return False
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    ctypes.set_errno(0)
+    rc = libc.syscall(number, *args)
+    return rc == -1 and ctypes.get_errno() == errno.EPERM
+
+
 def main():
     with open('/repo/probe.txt') as f:
         value = f.read().strip()
@@ -57,6 +71,12 @@ def main():
         'capabilities_cleared': capabilities_cleared(),
         'fork_denied': fork_denied(),
         'app_write_denied': blocked(lambda: Path('/app/worker.py').write_text('BYPASS')),
+        # A syscall not named in the positive profile must fail, even if
+        # harmless: this proves the default action is deny (not a blocklist).
+        'unlisted_getppid_denied': _denied_syscall('getppid'),
+        # Python requires Linux FIOCLEX for script handling. Different ioctl
+        # command numbers must remain prohibited.
+        'other_ioctl_denied': _denied_syscall('ioctl', 0, 0x541B, 0),
     }
     print(json.dumps({'checks': checks, 'all_passed': all(checks.values())}))
     return 0 if all(checks.values()) else 5

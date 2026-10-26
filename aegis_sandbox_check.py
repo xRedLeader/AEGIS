@@ -44,7 +44,7 @@ def run_check() -> dict:
             os.close(fd)
         if result.returncode != 0:
             raise RuntimeError('kernel sandbox probe failed; no unconfined fallback: '
-                               + result.stderr.decode(errors='replace')[:300])
+                               + f' (exit={result.returncode}, stdout={result.stdout[:250]!r}) ' + result.stderr.decode(errors='replace')[:300])
         report = json.loads(result.stdout)
         if not report.get('all_passed') or not report.get('checks') or not all(report['checks'].values()):
             raise RuntimeError('sandbox did not enforce all required kernel restrictions')
