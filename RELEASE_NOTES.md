@@ -1,4 +1,21 @@
-# AEGIS v1.4 — executable controlled HTTP(S) gateway
+# AEGIS v1.4.1 — independent kernel endpoint containment
+
+Feature branch implementation; publication is through a reviewed pull request, with no release tag created yet.
+
+- Added a non-root trusted DNS/connection broker and lifetime guardian. It opens only the authorized numeric TCP endpoint and passes the established socket into an offline namespace.
+- Confined the HTTP/TLS parser with the existing rootless user/mount/network/PID namespaces, capability removal, no-new-privileges and default-deny seccomp. New sockets, reconnects, UDP, Unix sockets, netlink and namespace escape are denied by the kernel.
+- Preserved signature/trust/revocation, DNS pinning, TLS, routes, request/concurrency/body budgets, emergency stop, ledger and signed checkpoint behavior.
+- Preserved the supplied dup/dup2/dup3 portability hotfix and protected trust-policy reader.
+- Closed pre-chroot directory handles; added descriptor/capability checks, bounded worker output, deadlines, interrupted setup/restart tests and supervisor-crash cleanup tests.
+- Updated the v1.2–v2.0 roadmap and documented authority, migration, supported Linux prerequisites and compromised-worker limits.
+
+Local verification: **120 tests passed, zero failures, zero skips**, plus the independent source sandbox probe and both signed demos. Actual environment and GitHub matrix results are recorded in VERIFICATION.md. A kernel endpoint boundary does not independently enforce HTTP routes, byte quotas or result authenticity after worker compromise.
+
+Existing v1.4 scope/policy/ledger formats remain compatible. Install the broker, launcher and gateway together in a protected location, stop active operations and rerun deployment-host tests. No host-specific path or account is required; Windows/macOS must host a supported Linux execution environment.
+
+## Historical v1.4 release
+
+### Executable controlled HTTP(S) gateway
 
 ## Added
 
@@ -19,3 +36,9 @@ All v1.3.1 local source-review, signed checkpoint and default-deny Linux worker 
 ## Scope and non-goals
 
 This release enforces policy in a trusted HTTP helper, but does not install an independent OS egress firewall or confine an LLM with host network/shell access. It does not certify target staging systems, provide arbitrary methods/headers or authenticated attacks, follow redirects, execute payloads, or deliver alerts externally. Deploy behind an authenticated operator service, not as a public network proxy.
+
+
+## Post-v1.4 portability patch (unreleased tag)
+
+See `PATCH_NOTES.md` for CPython startup syscall compatibility, live
+fresh-exec integration testing, and consistent protected trust-policy reads.

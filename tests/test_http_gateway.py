@@ -97,6 +97,13 @@ class HTTPGatewayTests(unittest.TestCase):
         self.fx.manifest["limits"]["deterministic_hypothesis_minutes"] = 1
         self.fx.save()
 
+    def test_route_guard_rejects_symlinked_operator_policy(self):
+        original = self.fx.p / 'real-trust.json'
+        self.fx.trust_path.rename(original)
+        self.fx.trust_path.symlink_to(original)
+        with self.assertRaises(ExecutionDenied):
+            self.supervisor().request(self.origin + '/allowed')
+
     def supervisor(self):
         return AegisHttpSupervisor(self.fx.manifest_path, self.fx.sig_path,
                                    self.fx.trust_path, self.state)

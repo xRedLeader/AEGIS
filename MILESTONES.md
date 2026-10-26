@@ -1,31 +1,32 @@
-# AEGIS roadmap — incremental acceptance toward v2.0
+# AEGIS milestones toward v2.0
 
-Each version is a **separately testable increment**, not a promised timeline. Working code and negative integration tests are required at every step. Build the next milestone only after the previous one meets its acceptance conditions. Failed tests block release.
+Each milestone is a separately tested increment, not a promised timeline. Unimplemented capabilities are future work. Failed or unexecuted acceptance gates block release.
 
-| Version | Deliverable | Acceptance gate |
+| Version | Milestone | Status and acceptance gate |
 |---|---|---|
-| **v1.2 — DONE (limited)** | Scoped local source-review execution, persistent runtime/evidence reservations, stop, audit | Valid signature runs only the known static worker; disallowed repo denied; symlink escapes denied; stop interrupts; budget persists and atomically handles concurrency; offline demo succeeds |
-| **v1.3 — DONE for fixed worker** | Rootless Linux namespace launcher, read-only mounts, seccomp, no external networking, pinned authorized repository, OS resource limits | Real kernel tests deny sockets/fork/unauthorized writes and host-file access; legitimate scan succeeds, interruption/budgets remain in place. **Cgroups and arbitrary-worker isolation are not included**. |
-| **v1.3.1 — DONE** | Default-deny fixed-worker seccomp profile; signed operator audit checkpoints | Kernel rejects unlisted syscalls; full-ledger rewrite is detected by externally signed prefix; archived checkpoints require independent operator retention |
-| **v1.4 — DONE (limited)** | Dedicated controlled HTTP(S) gateway for approved staging targets | Verify full URL-origin and method binding, DNS answer/routing restrictions, private IP policy, port and TLS identity, redirect/proxy denial, per-origin request/minute rates, concurrency and body/bytes caps; prove bypasses fail from inside sandbox |
-| **v1.5** | Credential broker, authenticated exception approvals, revocation updater and replay protection | Secrets never enter model context; tokens bound to precise target; operator approval is independently authenticated/short-lived; updates and session locks enforced across restarts |
-| **v1.6** | Safe adapters for static analyzers, dependency databases, permitted scanners and versioned research | Tools run under isolated supervisor, outputs sanitized; findings mapped to exact versions and source references; current advisory lookup records retrieval time and failure modes |
-| **v1.7** | Controlled exploit validation, parser fuzzing, bounded concurrency/stochastic testing in isolated replicas | A verified reproducible proof demonstrates impact without live sensitive records; fuzz trials/resource ceilings hold; artifacts/minimization preserved |
-| **v1.8** | Canonical report database, findings/evidence store, derived Markdown/PDF, operator notifications, retest workflow | Schema-validated findings and reports agree; no speculative finding claimed confirmed; monitored alert delivery test and transport-failure tests pass |
-| **v1.9** | Autonomous hypothesis planner, deduplication, chain tracking and resumable assessments | Model can request only strongly typed permitted actions; uncertainty and verified boundaries stay separate; no path to modifying policy; recover/replay tests pass |
-| **v2.0** | Integrated, provider-neutral authorized adversarial assessment platform | Full signed staging assessment: discovery -> safe validation -> chain evidence -> remediation report -> retest; all deny-path, fail-closed, rollback, security and chaos acceptance tests pass under target deployment configuration |
+| v1.2 | Executable local supervisor, persistent budgets, emergency stop, audit trail | Implemented for fixed source review; signed scopes, persistent accounting, concurrency, stop and audit tests required. |
+| v1.3 | Isolated worker environment with operating-system-enforced restrictions | Implemented for the fixed source worker; real namespace/seccomp tests and fresh interpreter execution required. No arbitrary-tool guarantee. |
+| v1.3.1 | Default-deny seccomp and signed audit checkpoints | Implemented; external checkpoint retention remains operator-owned. |
+| v1.4 | Controlled HTTP/HTTPS testing gateway with strict destination enforcement | Implemented application-level origin/IP/port/route/TLS controls and persistent request budgets. Original v1.4 tag does not contain independent HTTP kernel confinement. |
+| v1.4.1 | Independent kernel-enforced network containment | Implemented on this feature branch: connected TCP capability, offline namespaces, seccomp and external lifetime control. Release requires full regression and real kernel acceptance evidence on a supported Linux environment; see VERIFICATION.md. |
+| v1.5 | Credential broker, operator approvals, revocation and session controls | Planned. Secrets must stay out of model context, bind to exact assets, expire/revoke, and survive restart/replay tests. Independently authenticate approvals. |
+| v1.6 | Security-tool integrations and current vulnerability intelligence | Planned. Reviewed isolated adapters, sanitized output, exact version/advisory matching and recorded retrieval times/failures. |
+| v1.7 | Runtime testing, bounded fuzzing, and reproducible exploit validation | Planned. Authorized isolated replicas, reproducible impact evidence, bounded trials/resources and preserved minimized artifacts. |
+| v1.8 | Automated findings, evidence, remediation reports, and notifications | Planned. Canonical schema-validated findings, consistent reports, verified delivery and explicit transport failure handling. |
+| v1.9 | Autonomous investigation planning, attack-chain reasoning, and retesting | Planned. Typed permitted actions, verified vs uncertain claims, resumable state and replay/recovery tests without policy-write authority. |
+| v2.0 | Fully integrated, tested autonomous assessment system for authorized environments | Planned. End-to-end signed staging assessment, discovery through verified impact/remediation/retest, plus security review and failure/rollback tests. |
+
+## Before beginning v1.5
+
+Review and merge v1.4.1 only after its kernel and regression gates pass. Validate the actual deployment kernel/runtime and protect the operator-facing API and installation. Design credential handling around the remaining trust boundary: a compromised worker can misuse its granted TCP stream. Never pass credentials directly into an arbitrary worker merely because its destination is confined.
+
+Authenticated approvals, revocation updating, session identity and replay prevention must be designed together. Retain independently signed audit checkpoints off-host.
 
 ## Definition of v2.0 done
 
-1. A user connects a software repository or explicitly authorized staging app via a trusted operator configuration.
-2. The agent may discover and investigate high-impact flaws **without unrestricted shell, unrestricted network egress, or direct access to credentials**.
-3. The supervisor enforces approval boundaries, target allowlists, request/byte/concurrency/time limits, revocation, and kill switch **at execution time** across restarts.
-4. Findings provide minimal reproduction, independently verified impact, attacker starting state and reached privileges; no false claims of compromise.
-5. Operator receives useful reproducible findings and a remediation/regression-test report, including clean assessments and residual uncertainty.
-6. A deployment security review and practical penetration test of the supervisor itself are completed.
-
-## v1.4 completed with bounded limitations; v1.5 next actions
-
-v1.4 implements a trusted, uncredentialed GET/HEAD metadata gateway and demonstrates exact origin/IP/route enforcement, TLS verification, no proxy/redirect forwarding, and persistent rate, concurrency, request/response-body and time reservations with active stop/revocation. The source reviewer remains network-denied in its kernel sandbox. The HTTP helper is **not separately OS-restricted to approved IP egress**; a host firewall/container boundary is a deployment prerequisite and an OS-enforced transport boundary is a future hardening requirement. Do not represent the gateway as an arbitrary pentesting platform.
-
-Next: v1.5 adds an operator-owned credential broker and independently approved high-impact actions; before any arbitrary-agent network access, separately implement and validate kernel/host egress enforcement (or tightly controlled VM network policy). Include negative tests that no credential or response body can reach model context unexpectedly. Existing audit checkpoints still require off-host operator retention.
+1. An operator connects explicitly authorized software through protected configuration.
+2. The agent can investigate impact without unrestricted shell/network access or direct credential possession.
+3. Execution-time approval, scope, resource, revocation and stop controls hold across restarts.
+4. Confirmed findings include reproducible impact, attacker starting state and demonstrated privileges, with uncertainty clearly separated.
+5. Reports and monitored notifications cover findings, retests, clean assessments and residual uncertainty.
+6. Independent deployment security review and practical testing of the supervisor itself are complete.

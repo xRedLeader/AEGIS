@@ -73,6 +73,24 @@ class AegisPreflightTests(unittest.TestCase):
     def check(self):
         return validate(self.manifest_path, self.sig_path, self.trust_path)
 
+    def test_operator_policy_symlink_is_rejected(self):
+        moved = self.p / 'real-trust.json'
+        self.trust_path.rename(moved)
+        self.trust_path.symlink_to(moved)
+        with self.assertRaisesRegex(PreflightError, 'trusted policy unavailable'):
+            self.check()
+
+    def test_operator_policy_group_writable_is_rejected(self):
+        self.trust_path.chmod(0o664)
+        with self.assertRaisesRegex(PreflightError, 'group/other writable'):
+            self.check()
+
+    def test_operator_policy_oversized_is_rejected(self):
+        from aegis_preflight import MAX_TRUST_BYTES
+        self.trust_path.write_bytes(b'x' * (MAX_TRUST_BYTES + 1))
+        with self.assertRaisesRegex(PreflightError, 'exceeds size limit'):
+            self.check()
+
     def test_valid_signed_scope(self):
         verified = self.check()
         self.assertEqual(verified["status"], "PREFLIGHT_VERIFIED_NOT_RUNTIME_ENFORCEMENT")

@@ -65,6 +65,32 @@ class EnforcedWorkerIntegrationTests(unittest.TestCase):
     def supervisor(self):
         return self.fixture.supervisor()
 
+    def test_fresh_exec_worker_produces_nonempty_json_on_stdio(self):
+        """Catch CPython startup syscalls denied after seccomp, before execv.
+
+        This must exercise a fresh /usr/bin/python3 process in the real kernel
+        namespace, not a mock or an already-initialized interpreter.
+        """
+        from aegis_supervisor import open_directory_nofollow
+        sup = self.supervisor()
+        jail = Path(tempfile.mkdtemp(prefix='sandbox-fresh-exec-', dir=self.state))
+        try:
+            with open_directory_nofollow(self.fx.repo) as repo_fd:
+                res = subprocess.run(
+                    sup._worker_command(repo_fd, jail),
+                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, cwd='/',
+                    env={'PATH': '/usr/bin:/bin', 'PYTHONDONTWRITEBYTECODE': '1'},
+                    pass_fds=(repo_fd,), timeout=15,
+                )
+            self.assertEqual(res.returncode, 0, res.stderr.decode(errors='replace'))
+            self.assertTrue(res.stdout.strip(),
+                            'fresh worker returned rc=0 but empty stdout; check CPython dup syscalls')
+            result = json.loads(res.stdout)
+            self.assertEqual(result['status'], 'STATIC_LEADS_NOT_CONFIRMED_VULNERABILITIES')
+        finally:
+            jail.rmdir()
+
     def test_real_worker_result_states_os_isolation(self):
         result = self.supervisor().scan(self.fx.repo, 5)
         self.assertEqual(result['isolation'], 'LINUX_ROOTLESS_NAMESPACES_READONLY_ROOT_SECCOMP_DEFAULT_DENY')

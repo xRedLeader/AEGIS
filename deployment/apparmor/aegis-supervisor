@@ -1,0 +1,8 @@
+abi <abi/4.0>,
+include <tunables/global>
+
+# Ubuntu 24.04 opt-in for the trusted operator service, not a worker sandbox.
+# Attach this named profile to the service; do not disable AppArmor globally.
+profile aegis-supervisor flags=(unconfined) {
+  userns,
+}
