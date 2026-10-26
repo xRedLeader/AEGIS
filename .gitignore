@@ -1,0 +1,26 @@
+# Local environments and caches
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.py[cod]
+
+# Assessment data, local credentials, and generated material
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.log
+security-reports/
+assessment-output/
+artifacts/
+run-state/
