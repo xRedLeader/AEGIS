@@ -1,18 +1,19 @@
-# AEGIS v1.2 release notes
+# AEGIS v1.3 release notes
 
-## First executable increment
+## New working code
 
-- Added `aegis_supervisor.py`: local action authorizer for **only** `source_review`; rechecks v1.1 preflight, signature hash, freshness, emergency stop before/during/after known-worker execution.
-- Added operator-protected SQLite reservation ledger for cumulative runtime seconds and evidence bytes, with atomic reservations and scope-hash pinning across restarts. Reservations are conservatively never refunded after aborted work.
-- Added POSIX read-only `aegis_worker.py`: no target code execution; no symlink following within allowed repository; safe static scan for a few security-review leads. Output is **not** a validated vulnerability report.
-- Added per-run sanitized evidence file creation with private directories and audit-chain verification. No raw source snippets are exported.
-- Added `aegis_demo.py` for offline, ephemeral-key end-to-end demonstration and `tests/test_runtime.py` with runtime positive/negative scenarios.
-- Added `MILESTONES.md` and updated integration/README/supervisor architecture.
+- `aegis_sandbox.py`: fixed-worker rootless Linux user/mount/network/PID namespace launcher, protected tmpfs filesystem, ro bind mounts, pinned source inode verification, capability drop, `no_new_privs`, libseccomp system-call deny rules.
+- `aegis_isolation_probe.py` and `aegis_sandbox_check.py`: harmless operator-only runtime diagnostics for kernel-enforced read/write/network/privilege denials.
+- `aegis_supervisor.py`: replaces bare subprocess execution with a fail-closed namespace command, inherited pinned source FD, temporary per-run jail, and an explicit isolation indicator in results. Signed authorization, stop, revocation and the v1.2 budget/audit semantics remain in effect.
+- `tests/test_isolation.py`: actual kernel-denial tests, direct-launcher failure, missing/broken sandbox command denial, no fallback, and result/audit assertions.
 
 ## Compatibility
 
-**Signing format, schema and trust-policy format are unchanged from v1.1.** Existing valid v1.1 manifests do not require migration, but the new source-review action requires a repository root and `source_review` permission. To use source-only scanning, remove network targets and corresponding accounts/budgets in a newly signed scope.
+- Scope signing format, trusted policy and report schema are unchanged from v1.2. Previously valid v1.1/v1.2 signed scopes remain compatible when their active authorization, revocation and host requirements still hold.
+- Linux non-root + user namespace support and libseccomp are **new mandatory runtime requirements**. A missing security feature is an execution denial, not a downgrade to v1.2 behavior.
+- `scan` result now includes `isolation: LINUX_ROOTLESS_NAMESPACES_READONLY_ROOT_SECCOMP`.
 
-## Not delivered
+## Explicit non-features
 
-No OS-enforced sandbox around arbitrary tools, live network gateway, credentials, human-approval server, continuous external revocation updater, real exploit testing, or automated alert delivery. An agent granted separate shell/network tools can bypass this in-process supervisor; v1.3 will tackle operating-system isolation.
+- No generic command tool, arbitrary code execution, unconfined fallback, outbound HTTP client, credentials, production exploitation, alerts-to-operator transport, external revocation updater, or cgroup-v2 quotas.
+- Although a real kernel-isolated worker now exists, broader model/agent confinement and network-enabled tool security have not been implemented.

@@ -1,11 +1,11 @@
-# Provider-neutral agent integration — v1.2
+# Provider-neutral agent integration — v1.3
 
-AEGIS can use any model and agent orchestrator. **There is no direct model-to-shell integration in v1.2.** The only executable action is a trusted local source reviewer run by `aegis_supervisor.py` under a distinct, operator-controlled service identity.
+The operating model is independent of any specific AI provider or model. An agent must never receive the host's unrestricted shell or credentials.
 
-1. Supply `AGENT_DESCRIPTION.md` and `AEGIS_AGENT.md` to the agent.
-2. Present the agent with an application/tool API that only accepts a named action (`source_review`) and an approved repository identifier; do not expose unrestricted command execution. The operator service translates the approved request into `aegis_supervisor.py scan`.
-3. The service pins `AEGIS_TRUST_POLICY`, `AEGIS_STATE_ROOT`, scope and signature. Do **not** let the model pick these paths.
-4. The service reports the `source-review.json` artifact as **unverified static leads** and may use them to draft follow-up hypotheses, not confirmed findings.
-5. Keep full source, secrets, policy, signing keys and state outside the model's access. v1.2 writes files locally; a model/agent interface adapter has not yet been implemented.
+1. A trusted operator service pins the approved trust policy, revocation snapshot, signed scope and protected state root. Agent messages cannot select these files.
+2. The agent may request the single typed action `source_review` and an authorized repository identifier. The operator service authenticates the requester and maps it to the fixed `scan` command. This repo does not yet supply an HTTP API adapter.
+3. The Linux worker is launched only via the new namespace sandbox. It receives a read-only mount of the precise source repo and a built-in reviewer. If namespace/mount/seccomp installation fails, the action fails—there is no in-process fallback.
+4. The service returns sanitized `source-review.json` results to the agent as unverified static leads. The model can propose further authorized tests, but v1.3 has no active-test action to carry them out.
+5. Before deploying on a new host, execute `aegis_sandbox_check.py` as the non-root service user. A clean result is necessary but not a full host or kernel security certification.
 
-Read `README.md` to run the offline demo. `MILESTONES.md` defines acceptance gates before adding web probing, credential access, fuzzing, or other active security tools.
+For the API gateway, limited active HTTP tools and credential routing, see v1.4–v1.5 in [`MILESTONES.md`](MILESTONES.md).

@@ -152,7 +152,7 @@ class AegisRuntimeTests(unittest.TestCase):
 
     def test_live_stop_interrupts_worker(self):
         s = self.supervisor()
-        def slow(_):
+        def slow(_repo_fd, _jail):
             import sys
             return [sys.executable, "-I", "-S", "-c", "import time;time.sleep(8)"]
         with patch.object(s, "_worker_command", side_effect=slow):
@@ -177,7 +177,7 @@ class AegisRuntimeTests(unittest.TestCase):
 
     def test_worker_timed_out_and_killed(self):
         s = self.supervisor()
-        def slow(_):
+        def slow(_repo_fd, _jail):
             import sys
             return [sys.executable, "-I", "-S", "-c", "import time;time.sleep(10)"]
         with patch.object(s, "_worker_command", side_effect=slow):
@@ -209,7 +209,7 @@ class AegisRuntimeTests(unittest.TestCase):
 
     def test_midrun_revocation_interrupts_worker(self):
         s = self.supervisor()
-        def slow(_):
+        def slow(_repo_fd, _jail):
             import sys
             return [sys.executable, "-I", "-S", "-c", "import time;time.sleep(8)"]
         with patch.object(s, "_worker_command", side_effect=slow):

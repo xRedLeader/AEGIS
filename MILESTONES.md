@@ -5,7 +5,7 @@ Each version is a **separately testable increment**, not a promised timeline. Wo
 | Version | Deliverable | Acceptance gate |
 |---|---|---|
 | **v1.2 — DONE (limited)** | Scoped local source-review execution, persistent runtime/evidence reservations, stop, audit | Valid signature runs only the known static worker; disallowed repo denied; symlink escapes denied; stop interrupts; budget persists and atomically handles concurrency; offline demo succeeds |
-| **v1.3** | OS-isolated, unprivileged worker deployment with restrictive mounts, cgroups, seccomp, no general networking, and read-only assessed code | Demonstrate arbitrary child process cannot open external sockets, escape read-only file mounts, read private policy/key/credential state, or exceed CPU/memory/process limits; include adversarial tests |
+| **v1.3 — DONE for fixed worker** | Rootless Linux namespace launcher, read-only mounts, seccomp, no external networking, pinned authorized repository, OS resource limits | Real kernel tests deny sockets/fork/unauthorized writes and host-file access; legitimate scan succeeds, interruption/budgets remain in place. **Cgroups and arbitrary-worker isolation are not included**. |
 | **v1.4** | Dedicated controlled HTTP(S) gateway for approved staging targets | Verify full URL-origin and method binding, DNS answer/routing restrictions, private IP policy, port and TLS identity, redirect/proxy denial, per-origin request/minute rates, concurrency and body/bytes caps; prove bypasses fail from inside sandbox |
 | **v1.5** | Credential broker, authenticated exception approvals, revocation updater and replay protection | Secrets never enter model context; tokens bound to precise target; operator approval is independently authenticated/short-lived; updates and session locks enforced across restarts |
 | **v1.6** | Safe adapters for static analyzers, dependency databases, permitted scanners and versioned research | Tools run under isolated supervisor, outputs sanitized; findings mapped to exact versions and source references; current advisory lookup records retrieval time and failure modes |
@@ -23,6 +23,8 @@ Each version is a **separately testable increment**, not a promised timeline. Wo
 5. Operator receives useful reproducible findings and a remediation/regression-test report, including clean assessments and residual uncertainty.
 6. A deployment security review and practical penetration test of the supervisor itself are completed.
 
-## v1.2 next actions
+## v1.3 result and v1.4 next actions
 
-The *next* engineering milestone is v1.3: provision a locked-down worker image, test network namespace/no-egress under the actual target host, and enforce filesystem and CPU/memory constraints at the kernel/container level. No Python validation code or LLM prompt can replace those restrictions.
+v1.3 now enforces Linux namespace, read-only mount and syscall boundaries around one trusted fixed scanner, confirmed by the operator diagnostic and negative tests. This does **not** allow generic native binaries and does **not** confine the AI model process. Cgroup-v2 budgets, agent-level tool confinement and any permission to access a remote target remain future work.
+
+Next: v1.4 must implement a separately controlled HTTP/HTTPS broker that never exposes unrestricted egress or credentials to the worker, independently enforces exact target origin/TLS/redirect/rate/data budgets, and proves negative cases against locally hosted test services before any live target can be approved.

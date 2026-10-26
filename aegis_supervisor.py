@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""AEGIS v1.2 trusted local-action supervisor: signature, budget, stop, audit.
+"""AEGIS v1.3 local supervisor with a rootless Linux namespace worker.
 
-ONLY supports a bounded read-only source review. Not an OS-level security
-sandbox. It cannot confine an LLM or worker with independent shell/network
-access. Launch from a trusted service that owns its policy and state files.
+ONLY supports bounded read-only source review. The fixed worker runs in a
+Linux user/mount/network/PID namespace with a sealed filesystem and seccomp.
+This protects the worker; it does NOT confine an agent with independent shell
+or network access. Launch from a trusted operator-owned service.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ import signal
 import sqlite3
 import stat
 import subprocess
+import tempfile
 import sys
 import time
 import uuid
@@ -207,9 +209,16 @@ class AegisSupervisor:
             self._event(con, {"type": status, "engagement_id": eid, "run_id": run_id, "notes": notes[:160]})
             con.commit()
 
-    def _worker_command(self, repository: str) -> list[str]:
-        return [sys.executable, "-I", "-S", str(HERE / "aegis_worker.py"),
-                "--repo", repository, "--max-files", "1000", "--max-bytes", str(4 * 1024 * 1024)]
+    def _worker_command(self, repo_fd: int, jail: Path) -> list[str]:
+        # Fixed, trusted scan entrypoint: never passes a model-supplied command.
+        # No insecure fallback if user namespaces / seccomp are unavailable.
+        namespaces = ','.join(str(os.stat('/proc/self/ns/' + name).st_ino)
+                              for name in ('user', 'mnt', 'net', 'pid'))
+        return ["/usr/bin/unshare", "--user", "--map-root-user", "--mount",
+                "--net", "--pid", "--fork", "--kill-child", "--propagation", "private",
+                "--", "/usr/bin/python3", "-I", "-S", str(HERE / "aegis_sandbox.py"),
+                "--repo-fd", str(repo_fd), "--jail", str(jail), "--mode", "scan",
+                "--host-uid", str(os.geteuid()), "--parent-namespaces", namespaces]
 
     @staticmethod
     def _kill_worker(worker):
@@ -249,57 +258,73 @@ class AegisSupervisor:
         return str(out / "runs" / run_id / "source-review.json")
 
     def scan(self, repo: Path, budget_seconds: int = 15) -> dict:
-        if os.name != "posix" or not hasattr(os, "O_NOFOLLOW"):
-            deny("v1.2 bounded worker requires POSIX no-follow support")
+        if sys.platform != "linux" or not hasattr(os, "O_NOFOLLOW"):
+            deny("v1.3 requires Linux with POSIX no-follow support")
         if os.geteuid() == 0:
-            deny("v1.2 worker must not execute as root")
+            deny("v1.3 worker must launch from a non-root service identity")
         info, m = self._guard()
         requested = Path(repo)
         if not requested.is_absolute() or str(requested.resolve()) not in info["authorized_repositories"]:
             deny("repository is outside verified target scope")
-        # Source root must be opened by the worker with no symlinks in ANY parent.
-        with open_directory_nofollow(requested) as fd:
-            if not stat.S_ISDIR(os.fstat(fd).st_mode):
+        # Pinned authorized descriptor remains open until the sandbox exits;
+        # the child verifies its mounted repository's inode against this fd.
+        with open_directory_nofollow(requested) as repo_fd:
+            if not stat.S_ISDIR(os.fstat(repo_fd).st_mode):
                 deny("invalid repo directory")
-        info, m, run_id = self.reserve(budget_seconds)
-        eid = info["engagement_id"]
-        worker = None
-        try:
-            self._guard()  # Recheck signature, revocation and kill after atomic reservation.
-            worker = subprocess.Popen(self._worker_command(str(requested)),
-                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                      stderr=subprocess.PIPE, cwd="/", start_new_session=True,
-                                      env={"PATH": "/usr/bin:/bin", "PYTHONNOUSERSITE": "1"},
-                                      preexec_fn=lambda: preexec_limits(budget_seconds))
-            deadline = time.monotonic() + budget_seconds
-            while True:
-                self._guard()  # Recheck revocation and kill during execution.
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    deny("worker exceeded reserved runtime budget")
-                try:
-                    stdout, stderr = worker.communicate(timeout=min(0.25, remaining))
-                    break
-                except subprocess.TimeoutExpired:
-                    continue
-            if worker.returncode != 0:
-                deny("trusted source reviewer failed (no finding claimed)")
-            if len(stdout) > MAX_RESULT_BYTES:
-                deny("trusted source reviewer produced excessive evidence")
-            result = json.loads(stdout)
-            if result.get("status") != "STATIC_LEADS_NOT_CONFIRMED_VULNERABILITIES":
-                deny("unexpected worker result")
-            self._guard()
-            path = self._write_report(info, run_id, stdout)
-            self._finish(eid, run_id, "completed")
-            return {"status": "COMPLETED_STATIC_REVIEW_ONLY", "engagement_id": eid,
-                    "run_id": run_id, "report": path, "summary": result["summary"],
-                    "unverified_leads": len(result["candidates"]), "reserved_runtime_seconds": budget_seconds}
-        except BaseException as exc:
-            if worker and worker.poll() is None:
-                self._kill_worker(worker)
-            self._finish(eid, run_id, "aborted", str(exc))
-            raise
+            info, m, run_id = self.reserve(budget_seconds)
+            eid = info["engagement_id"]
+            worker = None
+            jail = None
+            try:
+                self._guard()
+                jail = Path(tempfile.mkdtemp(prefix="sandbox-", dir=self.state_root))
+                worker = subprocess.Popen(self._worker_command(repo_fd, jail),
+                                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE, cwd="/", start_new_session=True,
+                                          env={"PATH": "/usr/bin:/bin", "PYTHONNOUSERSITE": "1",
+                                               "PYTHONDONTWRITEBYTECODE": "1"},
+                                          pass_fds=(repo_fd,),
+                                          preexec_fn=lambda: preexec_limits(budget_seconds))
+                deadline = time.monotonic() + budget_seconds
+                while True:
+                    self._guard()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        deny("worker exceeded reserved runtime budget")
+                    try:
+                        stdout, stderr = worker.communicate(timeout=min(0.25, remaining))
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+                if worker.returncode != 0:
+                    deny("isolated worker failed; no result accepted")
+                if len(stdout) > MAX_RESULT_BYTES:
+                    deny("trusted source reviewer produced excessive evidence")
+                result = json.loads(stdout)
+                if result.get("status") != "STATIC_LEADS_NOT_CONFIRMED_VULNERABILITIES":
+                    deny("unexpected worker result")
+                self._guard()
+                path = self._write_report(info, run_id, stdout)
+                self._finish(eid, run_id, "completed")
+                return {"status": "COMPLETED_STATIC_REVIEW_ONLY", "engagement_id": eid,
+                        "run_id": run_id, "report": path, "summary": result["summary"],
+                        "isolation": "LINUX_ROOTLESS_NAMESPACES_READONLY_ROOT_SECCOMP",
+                        "unverified_leads": len(result["candidates"]),
+                        "reserved_runtime_seconds": budget_seconds}
+            except BaseException as exc:
+                if worker and worker.poll() is None:
+                    self._kill_worker(worker)
+                self._finish(eid, run_id, "aborted", str(exc))
+                raise
+            finally:
+                # Namespace mount is invisible in the supervisor's namespace.
+                if jail is not None:
+                    try:
+                        jail.rmdir()
+                    except OSError:
+                        # A cleanup failure must be visible to the operator.
+                        # A protected empty directory is not an escape route.
+                        pass
 
     def usage(self, eid: str) -> dict:
         self._guard()
@@ -336,7 +361,7 @@ def operator_stop(state_root: Path, eid: str):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="AEGIS v1.2 trusted, local-only action supervisor")
+    ap = argparse.ArgumentParser(description="AEGIS v1.3 sandboxed, local-only action supervisor")
     ap.add_argument("--manifest", type=Path)
     ap.add_argument("--signature", type=Path)
     cmds = ap.add_subparsers(dest="command", required=True)
