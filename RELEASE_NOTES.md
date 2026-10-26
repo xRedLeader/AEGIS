@@ -1,26 +1,18 @@
-# AEGIS v1.1 release notes
+# AEGIS v1.2 release notes
 
-## Provider-neutral release
+## First executable increment
 
-AEGIS is an agent specification, not a specific vendor's model feature. You can use the operating prompt with any tool-using model and orchestration platform that can integrate with an independently constrained executor. No model provider or elevated program access grants permission to test a target.
+- Added `aegis_supervisor.py`: local action authorizer for **only** `source_review`; rechecks v1.1 preflight, signature hash, freshness, emergency stop before/during/after known-worker execution.
+- Added operator-protected SQLite reservation ledger for cumulative runtime seconds and evidence bytes, with atomic reservations and scope-hash pinning across restarts. Reservations are conservatively never refunded after aborted work.
+- Added POSIX read-only `aegis_worker.py`: no target code execution; no symlink following within allowed repository; safe static scan for a few security-review leads. Output is **not** a validated vulnerability report.
+- Added per-run sanitized evidence file creation with private directories and audit-chain verification. No raw source snippets are exported.
+- Added `aegis_demo.py` for offline, ephemeral-key end-to-end demonstration and `tests/test_runtime.py` with runtime positive/negative scenarios.
+- Added `MILESTONES.md` and updated integration/README/supervisor architecture.
 
-## Security changes
+## Compatibility
 
-- **Domain-separated signatures**: Ed25519 signs `b"AEGIS-scope-v1\x00" + raw_manifest_bytes`, instead of the bare YAML bytes. Preflight verifies the same input *before* parsing YAML. A v1.0 signature will NOT verify with v1.1; re-sign approved manifests using the updated operator utility.
-- **Nonblind signing**: `aegis_admin.py sign` requires `--trust-policy` and runs the shared schema/authorization policy validation before signing. It also verifies that the supplied private key matches the independently pinned public signing key.
-- **Revocation freshness**: `trust-policy.example.json` includes `revocation.last_checked_utc` and `max_staleness_seconds` (example ceiling: 300 seconds). Preflight rejects old, missing, or future-dated snapshots. This is a *trusted updater assertion*; the updater and continuous runtime polling remain external requirements.
-- **Bounded input**: preflight limits signed manifest bytes before YAML parsing.
-- **Expanded regression tests**: malformed scope, legacy/wrong-context signatures, wrong operator key, unsafe signing, stale/future snapshot and oversize manifest.
-- **Supervisor specification**: new `SUPERVISOR_SPEC.md` states concrete enforcement requirements and integration acceptance tests.
+**Signing format, schema and trust-policy format are unchanged from v1.1.** Existing valid v1.1 manifests do not require migration, but the new source-review action requires a repository root and `source_review` permission. To use source-only scanning, remove network targets and corresponding accounts/budgets in a newly signed scope.
 
-## Migration from v1.0
+## Not delivered
 
-1. Replace the v1.0 tools and instructions with v1.1.
-2. Add the `revocation` object to the operator-controlled trust policy; a trusted updater must maintain its timestamp and approved/revoked lists. Preflight fails closed if absent/stale.
-3. Confirm independent asset/identity approvals and the current manifest's UTC window.
-4. Re-sign the approved scope using v1.1 `aegis_admin.py sign --trust-policy ...`; *do not* try to retain v1.0 signatures.
-5. Verify with the v1.1 preflight, run the tests, and separately test the runtime supervisor before any active assessment.
-
-## Still not implemented
-
-No executable attack runner, packet-level enforcement, credential broker, persistent revocation updater, cumulative-budget service, independent human approval service, kill switch, or notification delivery transport is included. AEGIS v1.1 is a stronger **preflight and operating specification**, not a ready-to-deploy autonomous penetration-testing platform. Signatures remain replayable within their allowed window absent a supervisor-maintained invocation/session ledger.
+No OS-enforced sandbox around arbitrary tools, live network gateway, credentials, human-approval server, continuous external revocation updater, real exploit testing, or automated alert delivery. An agent granted separate shell/network tools can bypass this in-process supervisor; v1.3 will tackle operating-system isolation.

@@ -1,15 +1,11 @@
-# Provider-neutral agent integration
+# Provider-neutral agent integration — v1.2
 
-AEGIS has no dependence on a model family, provider, API, proprietary agent framework, or hosted IDE.
+AEGIS can use any model and agent orchestrator. **There is no direct model-to-shell integration in v1.2.** The only executable action is a trusted local source reviewer run by `aegis_supervisor.py` under a distinct, operator-controlled service identity.
 
-## General integration steps
+1. Supply `AGENT_DESCRIPTION.md` and `AEGIS_AGENT.md` to the agent.
+2. Present the agent with an application/tool API that only accepts a named action (`source_review`) and an approved repository identifier; do not expose unrestricted command execution. The operator service translates the approved request into `aegis_supervisor.py scan`.
+3. The service pins `AEGIS_TRUST_POLICY`, `AEGIS_STATE_ROOT`, scope and signature. Do **not** let the model pick these paths.
+4. The service reports the `source-review.json` artifact as **unverified static leads** and may use them to draft follow-up hypotheses, not confirmed findings.
+5. Keep full source, secrets, policy, signing keys and state outside the model's access. v1.2 writes files locally; a model/agent interface adapter has not yet been implemented.
 
-1. Supply `AGENT_DESCRIPTION.md` as the agent description and `AEGIS_AGENT.md` as its operating instructions.
-2. Connect the agent to **supervisor-mediated tools**, not unrestricted shell/network access. Suggested categories: read source, inspect dependency advisories, request controlled local tests, record findings, and finish assessment.
-3. Have the privileged supervisor read the protected trust policy and invoke `aegis_preflight.py` on the signed manifest before permitting any active action. The supervisor must enforce the resulting effective scope on every actual operation.
-4. Store `findings.json` conforming to `findings.schema.json` and generate human-readable reports from it.
-5. Route critical findings via an independently tested monitored channel, and retain all sanitized evidence inside the authorized reporting root.
-
-## Deployment boundary
-
-You can use the text-only instructions without a supervisor for passive review of operator-provided local source code. Do **not** grant real network attack tools or production credentials solely on the strength of the prompt or a successful preflight. Build/test the controls in `SUPERVISOR_SPEC.md` first.
+Read `README.md` to run the offline demo. `MILESTONES.md` defines acceptance gates before adding web probing, credential access, fuzzing, or other active security tools.

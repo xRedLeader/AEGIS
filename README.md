@@ -1,105 +1,87 @@
-# AEGIS v1.1 — provider-neutral security research agent starter
+# AEGIS v1.2 — first executable, limited supervisor
 
-A **provider-neutral starter specification and authorization preflight** for authorized adversarial testing of your own software. It is **not** a ready-made, fully sandboxed penetration-testing executor, and it does not itself run scans or attacks.
+**Provider-neutral. No special model access required.** AEGIS is an incremental project toward an authorized autonomous security-assessment platform. **v1.2 is a real local execution milestone, not a deployable penetration-testing sandbox.** It only executes a known, read-only source reviewer. It does **not** permit live network attacks, arbitrary commands, credentials, or exploitation.
 
-## Included
+## What works in v1.2
 
-| File | Purpose |
-| --- | --- |
-| `AGENT_DESCRIPTION.md` | Short description for an agent configuration UI |
-| `AEGIS_AGENT.md` | Operating instructions for the research agent |
-| `security-scope.example.yaml` | Strict, deliberately **unauthorized** sample engagement scope |
-| `security-scope.schema.json` | Exact schema (rejects unknown and missing fields) |
-| `trust-policy.example.json` | Independent operator policy; ships with `configured:false` and no approved assets |
-| `aegis_preflight.py` | Ed25519 signature, schema, identity, target, credential, window, budget, and output preflight checks |
-| `aegis_admin.py` | **Operator-side** key generation and manifest signing utility |
-| `tests/test_preflight.py` | Positive and negative verification tests |
-| `findings.schema.json` and `findings.example.json` | Canonical, tiered findings format and empty-assessment example |
-| `aegis_report_validate.py` | Check the format of a generated findings report |
-| `requirements.txt` | Required Python libraries |
-| `SUPERVISOR_SPEC.md` | **Unimplemented** runtime enforcement contract and integration acceptance tests |
-| `INTEGRATION.md` | Vendor-neutral instructions for connecting the prompt to a constrained agent runner |
-| `RELEASE_NOTES.md` | v1.1 updates, security changes and v1.0 signature migration |
+- Ed25519-signed engagement manifest verification against an independent operator-pinned trust policy (inherited from v1.1).
+- Manifest and revocation verification immediately before execution, continuously while a worker runs, and again before accepting results.
+- SQLite `BEGIN IMMEDIATE` reservation of **cumulative runtime seconds and evidence bytes**, surviving supervisor restarts; the full reservation is charged even after an interrupted run. This accounts for the local review action only, not network traffic or fuzzing.
+- An emergency stop marker that denies new operations and kills a running worker via its process group when polled.
+- A trusted, no-shell, no-network, **read-only source-review worker** with resource limits and POSIX no-follow file opening. It never imports/runs target code.
+- Evidence written outside target repositories into private, per-run subdirectories, with a chained SQLite audit history. Chain validation is not a tamper-proof external log.
+- Test coverage for allowed execution as well as denials, restarts, symlink traversal, scope drift, budget contention, and live emergency stop.
 
-## Key separation
+Source-review regex matches are **unverified leads**; they do **not** become entries in the canonical `findings.json` until appropriately validated.
 
-1. **Operator signing key:** Keep the Ed25519 private key *outside* repositories, agent workspaces, and the agent runtime. Do not let an agent invoke the signing utility with it.
-2. **Independent trust policy:** The supervisor pins a protected policy containing the public key, operator identity, approved engagement IDs, explicit target allowlists, tool-method permissions, budgets, and reporting roots. This policy may never be supplied or edited by the agent.
-3. **Signed scope:** A scope manifest is signed over its exact bytes by the operator. A valid signature alone never authorizes a target not present in the independent trust-policy allowlist.
-4. **Executor:** An OS/container/CI supervisor enforces the effective scope while tests execute. A command-line preflight script or an LLM prompt is *not* an enforcement boundary.
+## Verify it offline (non-root Linux / POSIX)
 
-## Operator setup (example on a Linux security runner)
-
-Install dependencies from a trusted environment:
+Install required libraries and run the existing v1.1 tests plus new v1.2 integration tests:
 
 ```bash
 python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
-python aegis_report_validate.py findings.example.json
+python aegis_demo.py
 ```
 
-Generate signing keys on an operator-controlled computer (paths should be accessible only to trusted operator services):
+The demo generates an ephemeral signing key, an authorized **temporary demo repository**, a temporary policy, and a synthetic `shell=True` review candidate. It sends **zero network requests** and deletes all demo materials at exit. The demo is not an example of an acceptable production key-custody design.
 
-```bash
-python aegis_admin.py keygen \
-  --private /secure/operator-ed25519.key.pem \
-  --public /secure/operator-ed25519.pub.pem
-```
+Native Windows is not supported in this milestone. On Windows, use a properly configured Linux/WSL2 environment and a non-root service identity. Later milestones will provide a reproducible isolated container deployment.
 
-Distribute **only the public key** to the runner's protected key directory. Keep the private key on the operator system. Edit a copy of `trust-policy.example.json` **outside the agent-writable workspace** and set `configured:true` only after an independent operator has explicitly registered an engagement and its authorized resources. Populate the trust policy's `approved_engagement_ids`, `allowed_origins`, `allowed_repository_roots`, `approved_methods`, report/alert roots, operator identity, and budgets. File permissions must prevent an agent from changing the policy or public key. This example does not implement identity-provider checks or file-permission lockdown for your chosen OS.
+## Operator-owned local execution
 
-Edit a copy of `security-scope.example.yaml`, providing actual approved assets, identity, UTC timestamps, credential refs, limits, and output paths. Set the output directory to an engagement-specific absolute path **outside assessed repositories**, and create its parent directory and the alerts directory with service-account permissions.
+AEGIS v1.2 must be launched by a **trusted operator service**, never as an unrestricted command available to the assessment agent. Pre-provision the service installation and trust material outside the agent's writable folders, protected by OS permissions. Run under an unprivileged account. Keep the private signing key on a different operator machine.
 
-The trusted operator must also configure an independently maintained `revocation` snapshot (`last_checked_utc` and `max_staleness_seconds`). Stale or missing snapshots fail closed. Preflight only checks the timestamp in the protected policy: the trusted updater and continuous supervisor checks are not included.
-
-Sign the final, reviewed manifest on the **operator host**. The signing tool now validates the scope against the operator policy **before** issuing a signature, including checking the signing key identity:
-
-```bash
-python aegis_admin.py sign \
-  --private /secure/operator-ed25519.key.pem \
-  --manifest /secure/security-scope.yaml \
-  --signature /secure/security-scope.yaml.sig \
-  --trust-policy /etc/aegis/trust-policy.json
-```
-
-Place the signed manifest and signature in a location supplied to the executor; neither the agent nor a target under test should be allowed to modify them. The supervisor—not the agent—sets `AEGIS_TRUST_POLICY` to an absolute protected path and invokes:
+1. Register authorized engagement ID, repository roots, methods, report root and ceilings in an independent trust policy (`trust-policy.example.json` is **disabled** by default).
+2. Maintain `revocation.last_checked_utc` via a trusted updater; v1.2 checks freshness but **does not supply the updater**.
+3. Populate a signed scope per `security-scope.example.yaml` for your **actual local repo**, with method `source_review`. Set `targets.origins=[]`, `targets.networks=[]`, `accounts=[]`, and network request ceilings to zero when running repository-only assessments.
+4. Sign the scope **from an operator-controlled host** using `aegis_admin.py sign --trust-policy ...`, following the v1.1 instructions. Copy only the signed manifest and detached signature to the trusted runner.
+5. Pre-create the supervisor's protected state root, owned by the service identity with permissions `0700`. Run the supervisor via your trusted service (not through unrestricted agent shell access).
 
 ```bash
 export AEGIS_TRUST_POLICY=/etc/aegis/trust-policy.json
-python aegis_preflight.py \
-  --manifest /secure/security-scope.yaml \
-  --signature /secure/security-scope.yaml.sig
+export AEGIS_STATE_ROOT=/var/lib/aegis/private-supervisor-state
+
+python aegis_supervisor.py --manifest /etc/aegis/scope.yaml \
+  --signature /etc/aegis/scope.yaml.sig \
+  scan --repo /srv/authorized-repository --seconds 20
+
+python aegis_supervisor.py --manifest /etc/aegis/scope.yaml \
+  --signature /etc/aegis/scope.yaml.sig usage
+
+python aegis_supervisor.py --manifest /etc/aegis/scope.yaml \
+  --signature /etc/aegis/scope.yaml.sig audit
 ```
 
-A successful response has status `PREFLIGHT_VERIFIED_NOT_RUNTIME_ENFORCEMENT`. This means the input passed verification; it **does not** mean outbound operations have been securely constrained. Re-run before any new target, privilege escalation, or elevated-risk test, and during long batches.
+Operator-only, permanent stop for the engagement until operator manual intervention in the protected state store:
 
-## Runtime supervisor requirements (NOT implemented here)
+```bash
+python aegis_supervisor.py stop --engagement-id actual-engagement-id
+```
 
-See `SUPERVISOR_SPEC.md` for implementation-level responsibilities and the acceptance tests that must pass before active assessments. The package does **not** implement these runtime restrictions.
+Because a stop marker is state-backed rather than remotely authenticated, only the operator service should control this CLI. The process user must not be root; the `state_root` must be service-owned with mode `0700`. In practice, put the operator-side stop action behind independently authenticated administration.
 
-- Restrict sockets/HTTP egress to authorized origins, allowed resolved IP ranges and approved ports; independently handle DNS changes, redirects, proxies, SNI, and secondary protocols. Unknown destinations are denied. Empty allowlists mean none.
-- Protect the signing key, trust policy, scope input, cumulative usage ledger, kill switch, and approval records from the agent and tested code.
-- Inject test credentials with per-origin policies; prevent their use on production SSO or other out-of-scope resources.
-- Enforce per-engagement **cumulative** runtime/request/data budgets across restarts and per-run limits; verify time window/revocations continuously.
-- Treat exclusions, disallowed effects, and pending approvals as stricter than method allowances. Approvals must be independently verified, target-specific, short-lived, and recorded. This starter deliberately provides no bypass or automatic approval path.
-- Isolate destructive experiments; block customer-data exposure, persistence, evasion, third-party side effects, and disruption without explicit additional approval.
-- Wire the alert sink to a monitored notification transport. Preflight checks only that a file-based sink directory exists and is writable; **it does not prove an alert will reach a person**. The executor should test end-to-end delivery before an engagement.
-- Restrict report output to an external directory, redact sensitive materials, and retain auditable logs.
+## Important security boundary
 
-## Budget and testing semantics
+The supervisor mediates **only calls made through its API**. It does not prevent an AI agent or compromised tool with independent shell or network access from bypassing it. Restrict the agent and target worker with operating-system-level isolation before attaching broad tool access. The trusted supervisor source files, scope, policy, audit state, and code installation must not be writable by the model or the target repository. v1.2 does not implement a kernel-enforced deny-all network namespace, credential broker, production-grade logging, automatic revocation feed, independent approval service, or active testing tools.
 
-The signed manifest is authoritative **within ceilings imposed by the trust policy**. There are no automatic permissive defaults. Distinguish (1) the calendar authorization period, (2) total cumulative effort over all agent runs, (3) a single-run cap, and (4) per-hypothesis limits. `nondeterministic_max_trials` caps stochastic/concurrent testing; a lack of success after a few trials is **not** proof that a race condition does not exist.
+For the remaining engineering work, see [`SUPERVISOR_SPEC.md`](SUPERVISOR_SPEC.md) and [`MILESTONES.md`](MILESTONES.md). **Do not expose active network scanning or arbitrary code execution until v1.3+ controls are verified.**
 
-## Reports
+## Files
 
-`findings.json` is canonical and can be checked using `aegis_report_validate.py`. `report.md`, `attack-paths.md`, and `coverage.md` are human-readable views from those records; place redacted proofs in `evidence/`. The agent returns a summary in the invoking session and records critical findings in the explicitly configured sink.
+- `AEGIS_AGENT.md` — model-independent agent operating instructions
+- `AGENT_DESCRIPTION.md` — short profile
+- `aegis_supervisor.py` — new trusted local action runner, budgets, stop, audit
+- `aegis_worker.py` — new deliberately narrow static source reviewer
+- `aegis_demo.py` — new offline end-to-end demonstration
+- `aegis_preflight.py`, `aegis_admin.py` — inherited signed-scope and signing tools
+- `security-scope.schema.json`, `security-scope.example.yaml`, `trust-policy.example.json` — authorization format
+- `findings.schema.json`, `findings.example.json`, `aegis_report_validate.py` — validated report format
+- `tests/` — preflight, schema, and runtime tests
+- `MILESTONES.md` — incremental route to v2.0
+- `SUPERVISOR_SPEC.md` — additional containment requirements
+- `RELEASE_NOTES.md`, `REVIEW_RESOLUTION.md`, `INTEGRATION.md` — release and integration guidance
 
 ## Known limitations
 
-This preflight uses a domain-separated detached Ed25519 signature over **`b"AEGIS-scope-v1\x00"` + the exact UTF-8 YAML bytes**. Older v1.0 signatures must be regenerated using the updated operator tool. Changing whitespace or comments requires re-signing. It rejects duplicate YAML map keys, unrecognized fields, out-of-window/revoked engagements, overbroad targets and limits, test-account origin expansion, and mismatched signer identity.
-
-The implementation assumes the surrounding supervisor truly pins a read-only policy and handles revocation updates. An operator-maintained snapshot must remain fresh under the `revocation` policy; the preflight checks snapshot age but cannot independently prove that a trusted updater really consulted the revocation source. Signatures can be replayed while valid without a supervisor session ledger. If the agent can choose a different trust file, replace the public key, modify the supervisor, or control the machine clock, the cryptographic checks are not a security boundary. If a trusted signer has not independently confirmed legal/operational authorization, a valid signature alone does not fix that problem. Cross-platform file ownership and custody, actual credential broker integration, active network containment, live notification delivery, and cumulative-budget accounting are implementation tasks for the runtime supervisor.
-
-## Release compatibility
-
-This is version **1.1**, model/provider neutral. The operator signing command now requires `--trust-policy`, manifest signatures are domain separated, and the trust policy requires a fresh `revocation` snapshot. See `RELEASE_NOTES.md` before migrating any v1.0 engagement.
+This release requires POSIX directory-relative `O_NOFOLLOW` support. Resource limits use `resource` and process groups; Linux is the intended target. External dependencies may change with time; dependency pins should be reviewed and locked before deployment. The static worker uses heuristic pattern matching and limits each file to 128 KiB; results may be partial or false positives. The one-run reservation is not refunded after failures. Control polling is roughly every 250 ms, not instantaneous. SQLite chaining can detect accidental/tampered row modification but does not prevent whole-database replacement without an external anchor. Directory permissions and trust material custody are deployment responsibilities.
