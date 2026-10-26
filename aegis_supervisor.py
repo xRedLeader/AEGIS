@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""AEGIS v1.4 local supervisor with a rootless Linux namespace worker.
+"""AEGIS v1.4.1 local supervisor with rootless Linux namespace workers.
 
 Supports bounded read-only source review and tightly scoped uncredentialed
-HTTP(S) metadata requests. The source scanner remains in a Linux namespace
-with seccomp and zero network access. HTTP runs in a distinct trusted helper,
-NOT inside the scanner sandbox. An agent with independent shell/network tools
-can bypass both, so expose only fixed named operations via an operator service.
+HTTP(S) metadata requests. The source scanner has no network. A separate
+HTTP worker has only a broker-connected TCP capability inside its own offline
+namespace and seccomp boundary. Agents must receive only fixed named operations
+through an operator service, with no independent shell or network tools.
 """
 from __future__ import annotations
 
@@ -375,7 +375,7 @@ def operator_stop(state_root: Path, eid: str):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="AEGIS v1.4 scoped source review and HTTP metadata supervisor")
+    ap = argparse.ArgumentParser(description="AEGIS v1.4.1 scoped source review and HTTP metadata supervisor")
     ap.add_argument("--manifest", type=Path)
     ap.add_argument("--signature", type=Path)
     cmds = ap.add_subparsers(dest="command", required=True)

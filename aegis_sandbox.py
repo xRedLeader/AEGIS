@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""AEGIS v1.3.1: *trusted* Linux namespace launcher for the fixed static worker.
+"""AEGIS v1.4.1: trusted Linux namespace launcher for fixed assessment workers.
 
 Not an agent-facing general command runner. The supervisor launches this through
 unshare(1) under a non-root service identity, inside new user+mount+net+PID
-namespaces. Source is bind-mounted read-only at /repo; OS runtime and one fixed
-trusted worker script are also read-only; no other host paths are exposed.
+namespaces. Scans receive /repo read-only; HTTP receives one connected TCP fd.
+OS runtime and fixed worker code are read-only; no other host paths are exposed.
 The launcher drops capabilities, installs syscall filters, then execs the worker.
 
 This is a Linux-only backend. It deliberately fails if any containment step
@@ -18,6 +18,7 @@ import ctypes
 import errno
 import os
 from pathlib import Path
+import socket
 import stat
 import sys
 
@@ -44,6 +45,8 @@ SYSTEM_PYTHON = Path('/usr/bin/python3')
 SYSTEM_ROOT = Path('/usr')
 WORKER_HOST = Path(__file__).resolve().with_name('aegis_worker.py')
 PROBE_HOST = Path(__file__).resolve().with_name('aegis_isolation_probe.py')
+HTTP_HOST = Path(__file__).resolve().with_name('aegis_http_gateway.py')
+HTTP_PROBE_HOST = Path(__file__).resolve().with_name('aegis_egress_probe.py')
 
 class SandboxFailure(RuntimeError):
     pass
@@ -66,7 +69,7 @@ def _mount(source: str | None, target: Path, fstype: str | None, flags: int = 0,
     fmt = lambda s: None if s is None else os.fsencode(str(s))
     if lib.mount(fmt(source), fmt(target), fmt(fstype), flags, fmt(data)) != 0:
         code = ctypes.get_errno()
-        raise SandboxFailure(f'namespace mount operation failed: {os.strerror(code)}')
+        raise SandboxFailure(f'namespace mount operation failed ({target.name}, flags={flags}): {os.strerror(code)}')
 
 
 def _bind_readonly(source: Path, target: Path, is_file: bool = False):
@@ -119,6 +122,9 @@ WORKER_SYSCALL_ALLOWLIST = (
     'read', 'write', 'readv', 'writev', 'pread64', 'close', 'lseek',
     'fstat', 'newfstatat', 'stat', 'lstat', 'statx', 'getdents64',
     'open', 'openat', 'readlink', 'readlinkat', 'access',
+    # CPython 3.10 duplicates the standard FDs during fresh interpreter startup.
+    # Later builds may omit these calls; allow them for the supported range.
+    'dup', 'dup2', 'dup3',
     'faccessat', 'faccessat2', 'fcntl', 'getcwd',
     # Python ELF loader, allocator and threads' runtime bookkeeping.
     'mmap', 'mprotect', 'munmap', 'mremap', 'madvise', 'brk',
@@ -138,7 +144,7 @@ WORKER_SYSCALL_ALLOWLIST = (
 )
 
 
-def _install_default_deny_seccomp(sec):
+def _install_default_deny_seccomp(sec, network_fd=None):
     """Load a libseccomp allowlist (all other syscalls return EPERM).
 
     The final known executable is invoked by os.execv *after* this filter is
@@ -181,6 +187,24 @@ def _install_default_deny_seccomp(sec):
         eq = ArgCmp(1, 4, 0x5451, 0)  # SCMP_CMP_EQ, Linux FIOCLEX
         if sec.seccomp_rule_add_array(ctx, 0x7FFF0000, ioctl_num, 1, ctypes.byref(eq)) != 0:
             raise SandboxFailure('cannot add restricted ioctl FIOCLEX rule')
+        if network_fd is not None:
+            nonblocking = (ArgCmp * 2)(ArgCmp(0, 4, network_fd, 0),
+                                       ArgCmp(1, 4, 0x5421, 0))  # FIONBIO
+            if sec.seccomp_rule_add_array(ctx, 0x7FFF0000, ioctl_num, 2, nonblocking) != 0:
+                raise SandboxFailure('cannot enable socket nonblocking mode')
+            # Only the broker's connected TCP capability supports socket I/O.
+            # socket/connect/bind/listen/accept/setsockopt/netlink stay denied.
+            for name in ('sendto', 'recvfrom', 'getsockname', 'getpeername',
+                         'getsockopt', 'shutdown'):
+                number = sec.seccomp_syscall_resolve_name(name.encode('ascii'))
+                fd_eq = ArgCmp(0, 4, network_fd, 0)
+                if number < 0 or sec.seccomp_rule_add_array(
+                        ctx, 0x7FFF0000, number, 1, ctypes.byref(fd_eq)) != 0:
+                    raise SandboxFailure('cannot restrict socket I/O: ' + name)
+            for name in ('poll', 'ppoll', 'select', 'pselect6'):
+                number = sec.seccomp_syscall_resolve_name(name.encode('ascii'))
+                if number >= 0 and sec.seccomp_rule_add(ctx, 0x7FFF0000, number, 0) != 0:
+                    raise SandboxFailure('cannot enable bounded socket polling')
         if sec.seccomp_load(ctx) != 0:
             raise SandboxFailure('cannot load default-deny syscall filter')
     finally:
@@ -203,11 +227,25 @@ def _setup(args):
     if len(fields) != 1 or fields[0][:2] != ['0', str(args.host_uid)] or fields[0][2] != '1':
         raise SandboxFailure('unexpected user namespace mapping')
     jail = Path(args.jail)
+    network = args.mode in ('http', 'http-probe')
     repo_fd = args.repo_fd
-    if repo_fd < 3 or not stat.S_ISDIR(os.fstat(repo_fd).st_mode):
+    if network:
+        if args.socket_fd is None or args.socket_fd < 3:
+            raise SandboxFailure('connected TCP descriptor required')
+        sock = socket.socket(fileno=args.socket_fd)
+        try:
+            if (sock.family not in (socket.AF_INET, socket.AF_INET6) or
+                    sock.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) != socket.SOCK_STREAM or
+                    sock.getsockopt(socket.SOL_SOCKET, socket.SO_PROTOCOL) != socket.IPPROTO_TCP):
+                raise SandboxFailure('only connected IPv4/IPv6 TCP is permitted')
+            sock.getpeername()
+        finally:
+            sock.detach()
+    elif repo_fd is None or repo_fd < 3 or not stat.S_ISDIR(os.fstat(repo_fd).st_mode):
         raise SandboxFailure('authorized repository descriptor invalid')
-    repo = f'/proc/self/fd/{repo_fd}'
-    for p in (jail, WORKER_HOST):
+    worker_source = {'scan': WORKER_HOST, 'probe': PROBE_HOST,
+                     'http': HTTP_HOST, 'http-probe': HTTP_PROBE_HOST}[args.mode]
+    for p in (jail, worker_source):
         if not p.is_absolute() or p.is_symlink():
             raise SandboxFailure('namespace input path invalid')
     if not jail.is_dir() or jail.stat().st_mode & 0o077:
@@ -225,20 +263,29 @@ def _setup(args):
     (jail / 'lib').symlink_to('usr/lib')
     (jail / 'lib64').symlink_to('usr/lib64')
     # /usr may be root-owned but remains readable under the mapped user.
-    (jail / 'repo').mkdir(mode=0o755)
-    # Bind the path resolved from a pinned directory fd, then verify the mount
-    # refers to the very same inode before running any assessment worker.
-    source = os.readlink(repo)
-    if not source.startswith('/') or source.endswith(' (deleted)'):
-        raise SandboxFailure('repository descriptor has lost its authorized path')
-    _mount(source, jail / 'repo', None, MS_BIND)
-    expected, actual = os.fstat(repo_fd), os.stat(jail / 'repo')
-    if (expected.st_dev, expected.st_ino) != (actual.st_dev, actual.st_ino):
-        raise SandboxFailure('repository changed during namespace binding')
-    _mount(None, jail / 'repo', None, MS_BIND | MS_REMOUNT | MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC)
+    if not network:
+        (jail / 'repo').mkdir(mode=0o755)
+        source = os.readlink(f'/proc/self/fd/{repo_fd}')
+        if not source.startswith('/') or source.endswith(' (deleted)'):
+            raise SandboxFailure('repository descriptor has lost its authorized path')
+        _mount(source, jail / 'repo', None, MS_BIND)
+        expected, actual = os.fstat(repo_fd), os.stat(jail / 'repo')
+        if (expected.st_dev, expected.st_ino) != (actual.st_dev, actual.st_ino):
+            raise SandboxFailure('repository changed during namespace binding')
+        _mount(None, jail / 'repo', None, MS_BIND | MS_REMOUNT | MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC)
     (jail / 'app').mkdir(mode=0o755)
-    _bind_readonly(WORKER_HOST if args.mode == 'scan' else PROBE_HOST,
-                   jail / 'app' / 'worker.py', is_file=True)
+    _bind_readonly(worker_source, jail / 'app' / 'worker.py', is_file=True)
+    # A directory fd from before chroot would provide an escape via openat.
+    keep = {0, 1, 2} | ({args.socket_fd} if network else set())
+    for fd in (int(name) for name in os.listdir('/proc/self/fd')):
+        if fd not in keep:
+            try:
+                os.close(fd)
+            except OSError as exc:
+                if exc.errno != errno.EBADF:
+                    raise
+    if network and not all(stat.S_ISFIFO(os.fstat(fd).st_mode) for fd in (0, 1, 2)):
+        raise SandboxFailure('HTTP standard streams must be pipes, not sockets')
     os.chroot(jail)
     os.chdir('/')
     # Freeze writable root. All source, runtime, and app mounts are RO.
@@ -247,22 +294,25 @@ def _setup(args):
     if lib.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
         raise SandboxFailure('cannot set no_new_privs')
     _drop_capabilities(lib)
-    _install_default_deny_seccomp(sec)
+    _install_default_deny_seccomp(sec, args.socket_fd if network else None)
     if args.mode == 'scan':
         argv = [str(SYSTEM_PYTHON), '-I', '-S', '-B', '/app/worker.py',
                 '--repo', '/repo', '--max-files', '1000',
                 '--max-bytes', str(4 * 1024 * 1024)]
     else:
         argv = [str(SYSTEM_PYTHON), '-I', '-S', '-B', '/app/worker.py']
+        if network:
+            argv += ['--socket-fd', str(args.socket_fd)]
     # These are constant args; target code is NEVER executed.
     os.execv(str(SYSTEM_PYTHON), argv)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument('--repo-fd', type=int, required=True)
+    ap.add_argument('--repo-fd', type=int)
+    ap.add_argument('--socket-fd', type=int)
     ap.add_argument('--jail', required=True)
-    ap.add_argument('--mode', choices=('scan', 'probe'), default='scan')
+    ap.add_argument('--mode', choices=('scan', 'probe', 'http', 'http-probe'), default='scan')
     ap.add_argument('--host-uid', type=int, required=True)
     ap.add_argument('--parent-namespaces', required=True)
     args = ap.parse_args(argv)

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """AEGIS v1.4 fixed, uncredentialed HTTP/HTTPS request transport.
 
-Trusted-supervisor helper ONLY. Receives validated destination/route over stdin;
-connects to exactly one numeric IP with no second DNS lookup, never follows
-redirects, uses system-trusted TLS verification, discards response bodies.
+Confined worker ONLY. Receives one broker-connected TCP descriptor and validated
+configuration; verifies its peer without reconnecting, never follows redirects,
+verifies TLS using the broker's public CA snapshot and discards response bodies.
 
 This program is NOT a standalone authorization boundary and MUST NOT be exposed
 as a tool to agents or untrusted callers.
@@ -14,13 +14,11 @@ import hashlib
 import http.client
 import ipaddress
 import json
-import os
-import stat
 import socket
 import ssl
 import sys
 
-MAX_INPUT = 16384
+MAX_INPUT = 1024 * 1024 + 16384
 MAX_OUTPUT = 8192
 MAX_READ = 64 * 1024
 SAFE_HEADERS = {"content-type", "content-length", "cache-control", "x-content-type-options", "strict-transport-security"}
@@ -33,39 +31,25 @@ class TransportError(Exception):
 class PinnedConnection(http.client.HTTPConnection):
     """Use numeric address only; preserve signed hostname for Host and TLS SNI."""
 
-    def __init__(self, host: str, port: int, address: str, scheme: str, timeout: float):
+    def __init__(self, host: str, port: int, address: str, scheme: str, timeout: float,
+                 connected_fd: int):
         super().__init__(host, port, timeout=timeout)
         self.pinned_address = address
         self.scheme = scheme
-        self.ca_bundle = None
+        self.connected_fd = connected_fd
+        self.ca_pem = None
 
     def connect(self):
         address = ipaddress.ip_address(self.pinned_address)
-        family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
-        sock = socket.socket(family, socket.SOCK_STREAM)
+        sock = socket.socket(fileno=self.connected_fd)
         try:
+            peer = sock.getpeername()
+            if ipaddress.ip_address(peer[0]) != address or peer[1] != self.port:
+                raise TransportError("broker socket does not match pinned destination")
             sock.settimeout(self.timeout)
-            # Literal address => no DNS re-resolution, proxy or CONNECT tunnel.
-            sock.connect((str(address), self.port))
             if self.scheme == "https":
-                context = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH)
-                if self.ca_bundle is not None:
-                    custom = self.ca_bundle
-                    if set(custom) != {"path", "sha256"}:
-                        raise TransportError("invalid operator CA specification")
-                    fd = os.open(custom["path"], os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-                    try:
-                        st = os.fstat(fd)
-                        if (not stat.S_ISREG(st.st_mode) or st.st_size > 512 * 1024 or
-                            st.st_mode & 0o022 or st.st_uid not in (0, os.geteuid())):
-                            raise TransportError("operator CA bundle is not protected")
-                        cert_bytes = os.read(fd, 512 * 1024 + 1)
-                    finally:
-                        os.close(fd)
-                    if (len(cert_bytes) > 512 * 1024 or
-                        hashlib.sha256(cert_bytes).hexdigest() != custom["sha256"]):
-                        raise TransportError("operator CA bundle fingerprint changed")
-                    context.load_verify_locations(cadata=cert_bytes.decode("ascii"))
+                context = ssl.create_default_context(purpose=ssl.Purpose.SERVER_AUTH,
+                                                     cadata=self.ca_pem)
                 context.check_hostname = True
                 context.verify_mode = ssl.CERT_REQUIRED
                 sock = context.wrap_socket(sock, server_hostname=self.host)
@@ -75,9 +59,9 @@ class PinnedConnection(http.client.HTTPConnection):
             raise
 
 
-def execute(req: dict) -> dict:
+def execute(req: dict, connected_fd: int) -> dict:
     allowed = {"scheme", "hostname", "port", "address", "method", "target", "body_limit", "timeout"}
-    if not allowed <= set(req) or set(req) - allowed - {"ca_bundle"}:
+    if not allowed <= set(req) or set(req) - allowed - {"ca_pem"}:
         raise TransportError("unexpected transport configuration")
     scheme, host, address = req["scheme"], req["hostname"], req["address"]
     port, method, target = req["port"], req["method"], req["target"]
@@ -95,14 +79,17 @@ def execute(req: dict) -> dict:
     except ValueError as exc:
         raise TransportError("destination must be a numeric address") from exc
 
-    conn = PinnedConnection(host, port, address, scheme, timeout)
-    conn.ca_bundle = req.get("ca_bundle")
-    if conn.ca_bundle is not None and (scheme != "https" or not isinstance(conn.ca_bundle, dict)):
-        raise TransportError("operator CA bundle allowed only for HTTPS")
+    conn = PinnedConnection(host, port, address, scheme, timeout, connected_fd)
+    conn.ca_pem = req.get("ca_pem")
+    if scheme == "https" and (not isinstance(conn.ca_pem, str) or
+                              not conn.ca_pem or len(conn.ca_pem) > 1024 * 1024):
+        raise TransportError("broker TLS trust snapshot required")
+    if scheme == "http" and conn.ca_pem is not None:
+        raise TransportError("operator CA is only valid for HTTPS")
     try:
         # No caller-provided headers, cookies, credentials, proxy settings or bodies.
         conn.request(method, target, headers={
-            "User-Agent": "AEGIS-Authorized-Testing/1.4",
+            "User-Agent": "AEGIS-Authorized-Testing/1.4.1",
             "Accept": "*/*",
             "Accept-Encoding": "identity",
             "Connection": "close",
@@ -167,12 +154,11 @@ def main():
         req = json.loads(raw)
         if not isinstance(req, dict):
             raise TransportError("invalid request object")
-        if req.get("mode") == "resolve":
-            result = resolve(req)
-        elif req.get("mode") == "fetch":
+        if (req.get("mode") == "fetch" and len(sys.argv) == 3 and
+                sys.argv[1] == "--socket-fd" and int(sys.argv[2]) >= 3):
             req = dict(req)
             del req["mode"]
-            result = execute(req)
+            result = execute(req, int(sys.argv[2]))
         else:
             raise TransportError("unknown gateway mode")
         sys.stdout.write(json.dumps(result, sort_keys=True, separators=(",", ":")))

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import stat
 
 
 def blocked(operation):
@@ -59,8 +60,16 @@ def _denied_syscall(name, *args):
 def main():
     with open('/repo/probe.txt') as f:
         value = f.read().strip()
+    directory_fds = []
+    for fd in range(3, 64):
+        try:
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                directory_fds.append(fd)
+        except OSError:
+            pass
     checks = {
         'repo_readable': value == 'sandbox-fixture',
+        'host_directory_fds_closed': not directory_fds,
         'repo_write_denied': blocked(lambda: Path('/repo/created.txt').write_text('BYPASS')),
         'root_write_denied': blocked(lambda: Path('/escape.txt').write_text('BYPASS')),
         'host_etc_hidden': not Path('/etc/passwd').exists(),

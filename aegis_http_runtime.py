@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""AEGIS v1.4 HTTP(S) supervisor: scoped metadata-only GET/HEAD.
+"""AEGIS v1.4.1 HTTP(S) supervisor: scoped metadata-only GET/HEAD.
 
 Authorization is checked from a signed scope and separate operator trust file;
 requests are charged atomically before DNS, connections use verified IP literals,
 and a fixed trusted helper is watched for revocation/stop and wall-time limits.
 
-This module is NOT a host firewall or a network sandbox. The HTTP helper has OS
-network access. Only the trusted operator service may invoke this class, and
-it must not give the agent direct host shell or gateway-helper access.
+The trusted broker connects the pinned endpoint and confines the HTTP worker
+to that socket in offline namespaces with seccomp. Only the operator service
+may invoke this class; agents must not receive direct broker or host access.
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ import time
 import uuid
 
 from aegis_audit import AuditError, verify_rows
+from aegis_preflight import read_protected_trust
 from aegis_http_policy import HttpPolicyDenied, inspect_url, pinned_address
 from aegis_supervisor import AegisSupervisor, ExecutionDenied, HERE, deny, preexec_limits
 
@@ -133,7 +134,8 @@ class AegisHttpSupervisor(AegisSupervisor):
         if len(body) > 16384:
             deny("HTTP helper command exceeds maximum input")
         # Fixed helper. Never shell=True or caller-provided executable arguments.
-        worker = subprocess.Popen(["/usr/bin/python3", "-I", "-S", str(HERE / "aegis_http_gateway.py")],
+        worker = subprocess.Popen(["/usr/bin/python3", "-I", "-S",
+                                   str(HERE / "aegis_http_broker.py"), str(os.getpid())],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE, cwd="/", start_new_session=True,
                                   env={"PATH": "/usr/bin:/bin", "PYTHONNOUSERSITE": "1",
@@ -186,7 +188,7 @@ class AegisHttpSupervisor(AegisSupervisor):
         A prefix of '/' authorizes all paths at that origin: use only for
         explicitly disposable staging. GET cannot guarantee a state-free route.
         """
-        trust = json.loads(self.trust_path.read_text())
+        trust = read_protected_trust(self.trust_path)
         by_origin = trust.get("allowed_http_path_prefixes", {})
         if not isinstance(by_origin, dict):
             deny("invalid operator HTTP route policy")
@@ -215,7 +217,7 @@ class AegisHttpSupervisor(AegisSupervisor):
         CA is never accepted from agent input. Both parent and helper verify
         fingerprint; helper pins its exact bytes in SSL context before TLS.
         """
-        trust = json.loads(self.trust_path.read_text())
+        trust = read_protected_trust(self.trust_path)
         spec = trust.get("tls_custom_ca")
         if spec is None:
             return None
@@ -252,7 +254,7 @@ class AegisHttpSupervisor(AegisSupervisor):
         if "controlled_http_testing" not in info["approved_methods"]:
             deny("controlled_http_testing is not authorized")
         if method not in {"GET", "HEAD"}:
-            deny("v1.4 permits only GET and HEAD")
+            deny("v1.4.1 permits only GET and HEAD")
         if (type(budget_seconds) is not int or budget_seconds < 2 or
             budget_seconds > min(MAX_REQUEST_SECONDS, manifest["limits"]["max_single_run_minutes"] * 60)):
             deny("HTTP timeout exceeds per-operation limit")

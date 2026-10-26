@@ -14,6 +14,7 @@ import hashlib
 import ipaddress
 import json
 import os
+import stat
 from pathlib import Path
 import sys
 from urllib.parse import urlsplit
@@ -105,15 +106,46 @@ def under(candidate: Path, root: Path, strict_child: bool = False) -> bool:
     return (candidate != root or not strict_child) and (candidate == root or root in candidate.parents)
 
 
-def _load_trust(trust_path: Path):
-    """Load operator-pinned policy; the protected path must be passed by supervisor."""
+MAX_TRUST_BYTES = 512 * 1024
+
+
+def read_protected_trust(trust_path: Path) -> dict:
+    """Read a bounded, operator-owned, non-writable-by-others regular file.
+
+    The trusted supervisor must pin the absolute path outside agent-writable
+    directories and protect its ancestors. Opening the final component with
+    O_NOFOLLOW blocks a symlink substitution at that component. This does not
+    replace OS ownership, mount, or directory controls enforced by the host.
+    """
     require(trust_path.is_absolute(), "trusted policy location must be absolute")
     try:
-        trust = json.loads(trust_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        fd = os.open(trust_path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+        try:
+            meta = os.fstat(fd)
+            require(stat.S_ISREG(meta.st_mode), "trusted policy must be a regular file")
+            require(meta.st_uid in (0, os.geteuid()), "trusted policy has unapproved owner")
+            require(not meta.st_mode & 0o022, "trusted policy must not be group/other writable")
+            require(meta.st_size <= MAX_TRUST_BYTES, "trusted policy exceeds size limit")
+            raw = bytearray()
+            while len(raw) <= MAX_TRUST_BYTES:
+                chunk = os.read(fd, min(65536, MAX_TRUST_BYTES + 1 - len(raw)))
+                if not chunk:
+                    break
+                raw.extend(chunk)
+            require(len(raw) <= MAX_TRUST_BYTES, "trusted policy exceeds size limit")
+        finally:
+            os.close(fd)
+        result = json.loads(raw.decode('utf-8'))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise PreflightError(f"trusted policy unavailable or invalid: {exc}") from exc
-    require(isinstance(trust, dict) and trust.get("schema_version") == 1
-            and trust.get("configured") is True,
+    require(isinstance(result, dict), "trusted policy must be a JSON object")
+    return result
+
+
+def _load_trust(trust_path: Path):
+    """Load operator-pinned policy; read protection is shared with runtime polls."""
+    trust = read_protected_trust(trust_path)
+    require(trust.get("schema_version") == 1 and trust.get("configured") is True,
             "trusted policy not explicitly configured")
     try:
         signer = trust["operator"]
