@@ -40,13 +40,24 @@ jobs:
           .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
       - name: Require actual kernel isolation
         run: |
-          if ! .venv/bin/python aegis_sandbox_check.py; then
+          if [ "${{ matrix.os }}" = "ubuntu-24.04" ]; then
+            sudo apparmor_parser -r deployment/apparmor/aegis-supervisor
+            prefix=(sudo aa-exec -p aegis-supervisor -- runuser -u "$(id -un)" --)
+          else
+            prefix=()
+          fi
+          if ! "${prefix[@]}" .venv/bin/python aegis_sandbox_check.py; then
             echo "::error::NOT EXECUTED: kernel acceptance requires working namespaces and seccomp; no fallback permitted."
             exit 1
           fi
       - name: Full regression and adversarial kernel acceptance
         run: |
-          .venv/bin/python - <<'PY'
+          if [ "${{ matrix.os }}" = "ubuntu-24.04" ]; then
+            prefix=(sudo aa-exec -p aegis-supervisor -- runuser -u "$(id -un)" --)
+          else
+            prefix=()
+          fi
+          "${prefix[@]}" .venv/bin/python - <<'PY'
           import sys, unittest
           suite = unittest.defaultTestLoader.discover("tests")
           result = unittest.TextTestRunner(verbosity=2).run(suite)
@@ -56,5 +67,10 @@ jobs:
           PY
       - name: Signed source-review and HTTP demos
         run: |
-          .venv/bin/python aegis_demo.py
-          .venv/bin/python aegis_http_demo.py
+          if [ "${{ matrix.os }}" = "ubuntu-24.04" ]; then
+            prefix=(sudo aa-exec -p aegis-supervisor -- runuser -u "$(id -un)" --)
+          else
+            prefix=()
+          fi
+          "${prefix[@]}" .venv/bin/python aegis_demo.py
+          "${prefix[@]}" .venv/bin/python aegis_http_demo.py

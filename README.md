@@ -36,6 +36,8 @@ Read [VERIFICATION.md](VERIFICATION.md) for actual results, CI gates and deploym
 
 The code has no workstation-specific paths or user accounts. Installation location and operator state/policy paths are configurable. Windows and macOS hosts need a suitable Linux VM or execution environment; native Windows/macOS kernels cannot provide this Linux security boundary. Other Linux distributions must pass the same prerequisites and acceptance tests before use. Repository text uses LF line endings consistently across platforms.
 
+Ubuntu 24.04's AppArmor policy may deny unprivileged user namespaces by default. An operator must explicitly permit them for the trusted service. The named example profile in `deployment/apparmor/aegis-supervisor` grants that prerequisite; it is not a complete AppArmor confinement policy. Load it administratively and attach it to the service (for example, systemd `AppArmorProfile=aegis-supervisor`). The service still runs non-root. Do not disable AppArmor globally or bypass failed namespace checks. CI tests this opt-in configuration explicitly.
+
 ## Operator setup
 
 1. Install all code in a protected location outside agent-writable repositories. Pin `AEGIS_TRUST_POLICY` and `AEGIS_STATE_ROOT`; use a service-owned mode-0700 state directory. Keep private signing keys outside runtime workers.

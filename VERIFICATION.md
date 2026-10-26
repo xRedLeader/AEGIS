@@ -29,7 +29,7 @@ Final local run: **120 tests passed, 0 failed, 0 skipped** in 35.596 seconds. Th
 
 ## CI and deployment acceptance
 
-The GitHub workflow targets Ubuntu 22.04 and 24.04 using their system interpreters. It separates policy/schema unit tests from real kernel/regression tests. Kernel prerequisites are checked before acceptance. An unavailable prerequisite is reported as **NOT EXECUTED**, fails the required job and blocks release. Skipped tests must not be represented as passing.
+The GitHub workflow targets Ubuntu 22.04 and 24.04 using their system interpreters. It separates policy/schema unit tests from real kernel/regression tests. Ubuntu 24.04 explicitly loads the named AppArmor user-namespace opt-in profile and runs the suite non-root under that service profile; it does not disable AppArmor globally. Initial Ubuntu 24.04 jobs without that prerequisite reported **NOT EXECUTED** on a denied UID mapping. Kernel prerequisites are checked before acceptance. Unavailable prerequisites or skipped tests fail the required job and block release.
 
 Do not declare multi-distribution compatibility until both matrix jobs actually pass. At least one supported Linux environment must execute the real acceptance tests successfully before v1.4.1 is considered complete. Repeat on the actual deployment host after kernel/runtime changes.
 

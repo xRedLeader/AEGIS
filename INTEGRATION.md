@@ -17,6 +17,8 @@ Install the entire v1.4.1 code set, including `aegis_http_broker.py`, in a prote
 
 No host firewall, veth, sudo broker or CAP_NET_ADMIN grant is required. The launcher briefly holds capabilities only inside its private user namespace, then drops them. DNS and the initial TCP connect belong to the trusted broker. The parser gets one preconnected peer capability and no ability to create or replace connections.
 
+On AppArmor-enabled Ubuntu 24.04, permit user namespace creation for the operator service. `deployment/apparmor/aegis-supervisor` is a named opt-in profile using AppArmor 4's `userns` permission. An administrator loads it and selects it for the service, such as with systemd's `AppArmorProfile=` setting. It grants a prerequisite to an otherwise unconfined trusted service; it is not a full MAC policy and is not required on hosts without this restriction. Keep the service non-root and the global AppArmor policy enabled. Run the acceptance tests under the same selected service profile.
+
 Existing valid v1.4 manifests, operator route grants, TLS CA policy and SQLite ledgers retain their format. No automatic scope expansion, credential access or engagement reset occurs. Replace trusted code as one unit, stop in-flight operations before upgrading, verify checksums, and run `VERIFICATION.md` on the deployment host.
 
 For scoped staging requests:
