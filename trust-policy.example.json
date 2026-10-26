@@ -27,5 +27,9 @@
     "max_fuzz_minutes_per_target": 30
   },
   "allowed_report_roots": [],
-  "allowed_alert_roots": []
+  "allowed_alert_roots": [],
+  "revocation": {
+    "last_checked_utc": "2026-10-26T00:00:00Z",
+    "max_staleness_seconds": 300
+  }
 }

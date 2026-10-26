@@ -1,6 +1,6 @@
-# AEGIS agent starter
+# AEGIS v1.1 — provider-neutral security research agent starter
 
-A **starter specification and authorization preflight** for authorized adversarial testing of your own software. It is **not** a ready-made, fully sandboxed penetration-testing executor, and it does not itself run scans or attacks.
+A **provider-neutral starter specification and authorization preflight** for authorized adversarial testing of your own software. It is **not** a ready-made, fully sandboxed penetration-testing executor, and it does not itself run scans or attacks.
 
 ## Included
 
@@ -17,6 +17,9 @@ A **starter specification and authorization preflight** for authorized adversari
 | `findings.schema.json` and `findings.example.json` | Canonical, tiered findings format and empty-assessment example |
 | `aegis_report_validate.py` | Check the format of a generated findings report |
 | `requirements.txt` | Required Python libraries |
+| `SUPERVISOR_SPEC.md` | **Unimplemented** runtime enforcement contract and integration acceptance tests |
+| `INTEGRATION.md` | Vendor-neutral instructions for connecting the prompt to a constrained agent runner |
+| `RELEASE_NOTES.md` | v1.1 updates, security changes and v1.0 signature migration |
 
 ## Key separation
 
@@ -47,13 +50,16 @@ Distribute **only the public key** to the runner's protected key directory. Keep
 
 Edit a copy of `security-scope.example.yaml`, providing actual approved assets, identity, UTC timestamps, credential refs, limits, and output paths. Set the output directory to an engagement-specific absolute path **outside assessed repositories**, and create its parent directory and the alerts directory with service-account permissions.
 
-Sign the final, reviewed manifest on the **operator host**:
+The trusted operator must also configure an independently maintained `revocation` snapshot (`last_checked_utc` and `max_staleness_seconds`). Stale or missing snapshots fail closed. Preflight only checks the timestamp in the protected policy: the trusted updater and continuous supervisor checks are not included.
+
+Sign the final, reviewed manifest on the **operator host**. The signing tool now validates the scope against the operator policy **before** issuing a signature, including checking the signing key identity:
 
 ```bash
 python aegis_admin.py sign \
   --private /secure/operator-ed25519.key.pem \
   --manifest /secure/security-scope.yaml \
-  --signature /secure/security-scope.yaml.sig
+  --signature /secure/security-scope.yaml.sig \
+  --trust-policy /etc/aegis/trust-policy.json
 ```
 
 Place the signed manifest and signature in a location supplied to the executor; neither the agent nor a target under test should be allowed to modify them. The supervisor—not the agent—sets `AEGIS_TRUST_POLICY` to an absolute protected path and invokes:
@@ -68,6 +74,8 @@ python aegis_preflight.py \
 A successful response has status `PREFLIGHT_VERIFIED_NOT_RUNTIME_ENFORCEMENT`. This means the input passed verification; it **does not** mean outbound operations have been securely constrained. Re-run before any new target, privilege escalation, or elevated-risk test, and during long batches.
 
 ## Runtime supervisor requirements (NOT implemented here)
+
+See `SUPERVISOR_SPEC.md` for implementation-level responsibilities and the acceptance tests that must pass before active assessments. The package does **not** implement these runtime restrictions.
 
 - Restrict sockets/HTTP egress to authorized origins, allowed resolved IP ranges and approved ports; independently handle DNS changes, redirects, proxies, SNI, and secondary protocols. Unknown destinations are denied. Empty allowlists mean none.
 - Protect the signing key, trust policy, scope input, cumulative usage ledger, kill switch, and approval records from the agent and tested code.
@@ -88,6 +96,10 @@ The signed manifest is authoritative **within ceilings imposed by the trust poli
 
 ## Known limitations
 
-This preflight uses a detached Ed25519 signature of the **exact UTF-8 YAML bytes**. Changing whitespace or comments requires re-signing. It rejects duplicate YAML map keys, unrecognized fields, out-of-window/revoked engagements, overbroad targets and limits, test-account origin expansion, and mismatched signer identity.
+This preflight uses a domain-separated detached Ed25519 signature over **`b"AEGIS-scope-v1\x00"` + the exact UTF-8 YAML bytes**. Older v1.0 signatures must be regenerated using the updated operator tool. Changing whitespace or comments requires re-signing. It rejects duplicate YAML map keys, unrecognized fields, out-of-window/revoked engagements, overbroad targets and limits, test-account origin expansion, and mismatched signer identity.
 
-The implementation assumes the surrounding supervisor truly pins a read-only policy and handles revocation updates. If the agent can choose a different trust file, replace the public key, modify the supervisor, or control the machine clock, the cryptographic checks are not a security boundary. If a trusted signer has not independently confirmed legal/operational authorization, a valid signature alone does not fix that problem. Cross-platform file ownership and custody, actual credential broker integration, active network containment, live notification delivery, and cumulative-budget accounting are implementation tasks for the runtime supervisor.
+The implementation assumes the surrounding supervisor truly pins a read-only policy and handles revocation updates. An operator-maintained snapshot must remain fresh under the `revocation` policy; the preflight checks snapshot age but cannot independently prove that a trusted updater really consulted the revocation source. Signatures can be replayed while valid without a supervisor session ledger. If the agent can choose a different trust file, replace the public key, modify the supervisor, or control the machine clock, the cryptographic checks are not a security boundary. If a trusted signer has not independently confirmed legal/operational authorization, a valid signature alone does not fix that problem. Cross-platform file ownership and custody, actual credential broker integration, active network containment, live notification delivery, and cumulative-budget accounting are implementation tasks for the runtime supervisor.
+
+## Release compatibility
+
+This is version **1.1**, model/provider neutral. The operator signing command now requires `--trust-policy`, manifest signatures are domain separated, and the trust policy requires a fresh `revocation` snapshot. See `RELEASE_NOTES.md` before migrating any v1.0 engagement.

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption, load_pem_private_key
+from aegis_preflight import PreflightError, SIGNING_CONTEXT, validate_for_signing
 
 
 def write_new(path: Path, content: bytes, mode: int = 0o600):
@@ -31,6 +32,8 @@ def main():
     sign.add_argument("--private", type=Path, required=True)
     sign.add_argument("--manifest", type=Path, required=True)
     sign.add_argument("--signature", type=Path, required=True)
+    sign.add_argument("--trust-policy", type=Path, required=True,
+                      help="operator-protected policy; checked before signing")
     args = parser.parse_args()
     if args.command == "keygen":
         if args.private.exists() or args.public.exists():
@@ -45,9 +48,13 @@ def main():
         key = load_pem_private_key(args.private.read_bytes(), password=None)
         if not isinstance(key, Ed25519PrivateKey):
             parser.error("private key must be Ed25519")
-        signature = key.sign(args.manifest.read_bytes())
+        try:
+            raw, approved = validate_for_signing(args.manifest, args.trust_policy, key)
+        except PreflightError as exc:
+            parser.error(f"refusing to sign: {exc}")
+        signature = key.sign(SIGNING_CONTEXT + raw)
         write_new(args.signature, signature, 0o644)
-        print(f"Signed exact manifest bytes: {args.signature}")
+        print(f"Signed authorized manifest {approved['engagement_id']}: {args.signature}")
 
 
 if __name__ == "__main__":

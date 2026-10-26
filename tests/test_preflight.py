@@ -4,13 +4,19 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import tempfile
+import contextlib
+import io
+from unittest.mock import patch
+
+from cryptography.hazmat.primitives.serialization import PrivateFormat, NoEncryption
 import unittest
 
 import yaml
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from aegis_preflight import PreflightError, validate
+from aegis_preflight import PreflightError, SIGNING_CONTEXT, validate, validate_for_signing
+from aegis_admin import main as admin_main
 
 BASE = Path(__file__).resolve().parents[1]
 
@@ -44,6 +50,7 @@ class AegisPreflightTests(unittest.TestCase):
         self.pub = self.p / "pinned.pub.pem"
         self.pub.write_bytes(self.key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo))
         self.trust["configured"] = True
+        self.trust["revocation"]["last_checked_utc"] = ts(now)
         self.trust["operator"]["public_key_pem_path"] = str(self.pub)
         self.trust["approved_engagement_ids"] = [self.manifest["engagement"]["id"]]
         self.trust["allowed_repository_roots"] = [str(self.repo.parent)]
@@ -60,7 +67,7 @@ class AegisPreflightTests(unittest.TestCase):
         contents = raw if raw is not None else yaml.safe_dump(self.manifest, sort_keys=False).encode("utf-8")
         self.manifest_path.write_bytes(contents)
         if sign:
-            self.sig_path.write_bytes(self.key.sign(contents))
+            self.sig_path.write_bytes(self.key.sign(SIGNING_CONTEXT + contents))
         self.trust_path.write_text(json.dumps(self.trust))
 
     def check(self):
@@ -171,6 +178,91 @@ class AegisPreflightTests(unittest.TestCase):
         self.save()
         with self.assertRaisesRegex(PreflightError, "CIDR exceeds"):
             self.check()
+
+
+    def test_legacy_signature_without_domain_separation_rejected(self):
+        # v1.0 used a signature over raw bytes; v1.1 intentionally rejects it.
+        self.sig_path.write_bytes(self.key.sign(self.manifest_path.read_bytes()))
+        with self.assertRaisesRegex(PreflightError, "signature"):
+            self.check()
+
+    def test_other_protocol_context_is_not_accepted(self):
+        raw = self.manifest_path.read_bytes()
+        self.sig_path.write_bytes(self.key.sign(b"Different-Protocol\x00" + raw))
+        with self.assertRaisesRegex(PreflightError, "signature"):
+            self.check()
+
+    def test_pre_sign_validation_accepts_authorized_scope(self):
+        raw, info = validate_for_signing(self.manifest_path, self.trust_path, self.key)
+        self.assertEqual(raw, self.manifest_path.read_bytes())
+        self.assertEqual(info["engagement_id"], self.manifest["engagement"]["id"])
+
+    def test_pre_sign_validation_rejects_out_of_scope_target(self):
+        self.manifest["targets"]["origins"].append("https://not-allowed.test")
+        self.save()
+        with self.assertRaisesRegex(PreflightError, "origins exceed"):
+            validate_for_signing(self.manifest_path, self.trust_path, self.key)
+
+    def test_pre_sign_validation_rejects_wrong_operator_key(self):
+        with self.assertRaisesRegex(PreflightError, "private key does not match"):
+            validate_for_signing(self.manifest_path, self.trust_path, Ed25519PrivateKey.generate())
+
+    def test_oversize_manifest_rejected_even_when_signed(self):
+        self.save(raw=self.manifest_path.read_bytes() + b"#" * (256 * 1024), sign=True)
+        with self.assertRaisesRegex(PreflightError, "exceeds size limit"):
+            self.check()
+
+    def test_sign_command_blocks_invalid_scope_and_does_not_write_signature(self):
+        self.manifest["targets"]["origins"].append("https://not-allowed.test")
+        self.save()
+        dest = self.p / "invalid.sig"
+        private_path = self.p / "private.pem"
+        private_path.write_bytes(self.key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
+        args = ["aegis_admin.py", "sign", "--private", str(private_path),
+                "--manifest", str(self.manifest_path), "--trust-policy", str(self.trust_path),
+                "--signature", str(dest)]
+        with patch("sys.argv", args), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                admin_main()
+        self.assertEqual(error.exception.code, 2)
+        self.assertFalse(dest.exists())
+
+    def test_sign_command_end_to_end(self):
+        dest = self.p / "new.sig"
+        private_path = self.p / "private.pem"
+        private_path.write_bytes(self.key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
+        args = ["aegis_admin.py", "sign", "--private", str(private_path),
+                "--manifest", str(self.manifest_path), "--trust-policy", str(self.trust_path),
+                "--signature", str(dest)]
+        with patch("sys.argv", args), contextlib.redirect_stdout(io.StringIO()):
+            admin_main()
+        self.assertEqual(len(dest.read_bytes()), 64)
+        self.assertEqual(validate(self.manifest_path, dest, self.trust_path)["status"],
+                         "PREFLIGHT_VERIFIED_NOT_RUNTIME_ENFORCEMENT")
+
+
+    def test_stale_revocation_snapshot_rejected(self):
+        self.trust["revocation"]["last_checked_utc"] = (
+            datetime.now(timezone.utc) - timedelta(hours=2)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.save()
+        with self.assertRaisesRegex(PreflightError, "revocation snapshot stale"):
+            self.check()
+
+    def test_future_revocation_snapshot_rejected(self):
+        self.trust["revocation"]["last_checked_utc"] = (
+            datetime.now(timezone.utc) + timedelta(minutes=2)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.save()
+        with self.assertRaisesRegex(PreflightError, "future-dated"):
+            self.check()
+
+    def test_missing_revocation_snapshot_rejected(self):
+        del self.trust["revocation"]
+        self.save()
+        with self.assertRaisesRegex(PreflightError, "revocation snapshot is missing"):
+            self.check()
+
 
 
 if __name__ == "__main__":

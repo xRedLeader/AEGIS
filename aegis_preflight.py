@@ -20,12 +20,17 @@ from urllib.parse import urlsplit
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from jsonschema import Draft202012Validator
 import yaml
 
 
 BASE = Path(__file__).resolve().parent
+# Domain separation prevents an AEGIS signature being accepted in a different
+# Ed25519 protocol that happens to use the same operator key.
+SIGNING_CONTEXT = b"AEGIS-scope-v1\x00"
+MAX_MANIFEST_BYTES = 256 * 1024
+
 REQUIRED_APPROVALS = {
     "production_state_changes", "high_impact_exploitation", "destructive_tests",
     "service_disruption", "real_data_access", "credential_use_outside_test",
@@ -100,30 +105,42 @@ def under(candidate: Path, root: Path, strict_child: bool = False) -> bool:
     return (candidate != root or not strict_child) and (candidate == root or root in candidate.parents)
 
 
-def validate(manifest_path: Path, signature_path: Path, trust_path: Path, now: datetime | None = None) -> dict:
-    """Pure-ish verification function; trust path MUST come from protected supervisor."""
+def _load_trust(trust_path: Path):
+    """Load operator-pinned policy; the protected path must be passed by supervisor."""
     require(trust_path.is_absolute(), "trusted policy location must be absolute")
     try:
         trust = json.loads(trust_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise PreflightError(f"trusted policy unavailable or invalid: {exc}") from exc
-    require(trust.get("schema_version") == 1 and trust.get("configured") is True,
+    require(isinstance(trust, dict) and trust.get("schema_version") == 1
+            and trust.get("configured") is True,
             "trusted policy not explicitly configured")
-
     try:
         signer = trust["operator"]
         key_path = canon(signer["public_key_pem_path"])
         key = load_pem_public_key(key_path.read_bytes())
         require(isinstance(key, Ed25519PublicKey), "trusted signing key must be Ed25519")
-        raw = manifest_path.read_bytes()
-        sig = signature_path.read_bytes()
-        require(len(sig) == 64, "detached Ed25519 signature must be exactly 64 bytes")
-        key.verify(sig, raw)
-    except InvalidSignature as exc:
-        raise PreflightError("detached manifest signature failed verification") from exc
     except (OSError, KeyError, TypeError, ValueError) as exc:
-        raise PreflightError(f"signature/trust verification failed: {exc}") from exc
+        raise PreflightError(f"trusted signing identity invalid: {exc}") from exc
+    return trust, signer, key, key_path
 
+
+def _read_manifest(manifest_path: Path) -> bytes:
+    try:
+        # Refuse oversized inputs before reading or parsing untrusted YAML.
+        require(manifest_path.stat().st_size <= MAX_MANIFEST_BYTES,
+                "manifest exceeds size limit")
+        raw = manifest_path.read_bytes()
+    except OSError as exc:
+        raise PreflightError(f"manifest unavailable: {exc}") from exc
+    require(len(raw) <= MAX_MANIFEST_BYTES, "manifest exceeds size limit")
+    return raw
+
+
+def _validate_contents(raw: bytes, trust: dict, signer: dict,
+                       key_path: Path, trust_path: Path,
+                       now: datetime | None = None) -> dict:
+    """Apply identical content and target-policy checks for signing and preflight."""
     try:
         manifest = yaml.load(raw.decode("utf-8"), Loader=UniqueKeyLoader)
     except (UnicodeError, yaml.YAMLError) as exc:
@@ -144,6 +161,16 @@ def validate(manifest_path: Path, signature_path: Path, trust_path: Path, now: d
 
     start, end = parse_utc(eng["valid_from_utc"]), parse_utc(eng["valid_until_utc"])
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    # The operator-maintained revocation snapshot must be recent. This assumes
+    # the trusted policy updater verifies the source and protects its timestamp.
+    rev = trust.get("revocation")
+    require(isinstance(rev, dict), "trusted revocation snapshot is missing")
+    max_staleness = rev.get("max_staleness_seconds")
+    require(type(max_staleness) is int and 1 <= max_staleness <= 3600,
+            "invalid trusted revocation freshness ceiling")
+    last_checked = parse_utc(rev.get("last_checked_utc", ""))
+    age = (current - last_checked).total_seconds()
+    require(0 <= age <= max_staleness, "trusted revocation snapshot stale or future-dated")
     require(start < end, "authorization window not increasing")
     require(start <= current < end, "engagement not currently authorized")
     max_hours = trust.get("max_authorization_hours")
@@ -216,12 +243,44 @@ def validate(manifest_path: Path, signature_path: Path, trust_path: Path, now: d
         "engagement_id": eid,
         "manifest_sha256": hashlib.sha256(raw).hexdigest(),
         "authorized_until_utc": eng["valid_until_utc"],
+        "revocation_snapshot_checked_at_utc": rev["last_checked_utc"],
+        "revocation_max_staleness_seconds": max_staleness,
         "authorized_origins": sorted(origins),
         "authorized_repositories": [str(p) for p in repositories],
         "authorized_networks": [str(n) for n in networks],
         "approved_methods": sorted(allowed_methods),
         "report_directory": str(out),
     }
+
+
+def validate(manifest_path: Path, signature_path: Path, trust_path: Path,
+             now: datetime | None = None) -> dict:
+    """Verify signature BEFORE parsing YAML; trust path must be supervisor-pinned."""
+    trust, signer, key, key_path = _load_trust(trust_path)
+    raw = _read_manifest(manifest_path)
+    try:
+        sig = signature_path.read_bytes()
+        require(len(sig) == 64, "detached Ed25519 signature must be exactly 64 bytes")
+        key.verify(sig, SIGNING_CONTEXT + raw)
+    except InvalidSignature as exc:
+        raise PreflightError("detached manifest signature failed verification") from exc
+    except OSError as exc:
+        raise PreflightError(f"signature/trust verification failed: {exc}") from exc
+    return _validate_contents(raw, trust, signer, key_path, trust_path, now)
+
+
+def validate_for_signing(manifest_path: Path, trust_path: Path,
+                         signing_key, now: datetime | None = None) -> tuple[bytes, dict]:
+    """Operator-side lint/policy check prior to signing, not an authorization grant."""
+    trust, signer, pinned_public, key_path = _load_trust(trust_path)
+    require(isinstance(signing_key, Ed25519PrivateKey), "private key must be Ed25519")
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+    key_bytes = signing_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    pinned_bytes = pinned_public.public_bytes(Encoding.Raw, PublicFormat.Raw)
+    require(key_bytes == pinned_bytes, "private key does not match pinned signing identity")
+    raw = _read_manifest(manifest_path)
+    result = _validate_contents(raw, trust, signer, key_path, trust_path, now)
+    return raw, result
 
 
 def main(argv=None) -> int:

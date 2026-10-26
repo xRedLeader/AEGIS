@@ -2,7 +2,7 @@
 
 | Reviewer concern | Resolution |
 | --- | --- |
-| Undefined “Daybreak” terminology | Replaced with model-neutral rule: capability does not constitute target authorization |
+| Undefined vendor-specific capability terminology | Replaced with model-neutral rule: capability does not constitute target authorization |
 | Two competing budget authorities | Signed manifest supplies explicit budgets; operator-protected trust policy supplies non-overridable upper bounds; calendar window and cumulative/per-run budgets are distinct |
 | Three-failure rule inhibits race findings | Distinct deterministic and nondeterministic processes; statistical trial plans, outcome frequency and manifest cap for timing/race research |
 | Trusted manifest's authenticity | Detached Ed25519 signature over exact file bytes, verified against an out-of-band pinned public key; signer principal and engagement ID checked against independent trust registry |
@@ -24,3 +24,16 @@
 - Signatures prove origin and integrity, not legal permission by themselves. An independent human-approved target registry remains essential.
 - A writable trust policy or compromised signing key invalidates the threat model.
 - No live scans, vulnerability reports, secret manager hookup, notification sending, or autonomous background schedule are included.
+
+## Latest hardening round (v1.1)
+
+| Issue | Change |
+| --- | --- |
+| Provider-specific authorization language | All runtime prompts and integration instructions are provider neutral |
+| Preflight isn't runtime enforcement | Explicit, testable `SUPERVISOR_SPEC.md`; runtime layer is **not** claimed implemented |
+| Ed25519 bare-message signing | Versioned protocol context `AEGIS-scope-v1\x00` included in signature and verification |
+| Revocation freshness not bounded | Protected revocation snapshot and fail-closed age check in preflight; updater/runtime rechecks still required |
+| Operator tool signed arbitrary bytes | Operator `sign` command now applies the same schema, signer, asset, limits, window, and output checks used by preflight |
+| TOCTOU/file changes | Runtime reauthorization and filesystem isolation required; not solved in preflight |
+| One fixed report dir/alert | Engagement directory remains fixed; supervisor can make controlled per-run subdirectories |
+| Cross-run replay | Documented remaining risk; supervisor session binding and ledger required |
