@@ -1,51 +1,64 @@
-# HTTP gateway implementation and security boundary (v1.4)
+# HTTP gateway containment — v1.4.1
 
-## Actual data path
+## Architecture
 
-```text
-Model / operator --typed request--> trusted operator service (not included)
-    | HTTP GET/HEAD URL (agent never chooses trust policy or filesystem)
-    v
-AegisHttpSupervisor (trusted Linux non-root service)
-    |- Verify signed scope, independent trust, fresh revocation, emergency stop
-    |- Bind exact signed origin + independently approved path-prefix
-    |- Atomically reserve SQLite request/rate/concurrency/runtime/bytes
-    |- Spawn killable fixed DNS helper for approved hostname
-    |- Reject every address if any is outside signed+trusted CIDRs / unsafe
-    |- Select one numeric IP; recheck authorization and policy
-    |- Spawn killable fixed transport helper with pinned IP + signed host
-    |    |- TCP direct to numeric IP, no name re-resolution or proxy
-    |    |- HTTPS: system/approved operator CA + hostname/SNI validation
-    |    |- GET/HEAD fixed headers only; do not follow redirects
-    |    '- Discard response body after bounded hashing
-    |- Watchdog checks stop, scope, route grant, revocation, CA changes, time
-    '- Write private, sanitized response metadata; complete SQLite audit
+```mermaid
+flowchart TD
+    A[Agent: typed URL and GET or HEAD] --> S[Trusted supervisor]
+    O[Operator: signed scope, independent policy, revocation] --> S
+    S --> L[SQLite reservations and audit]
+    S --> B[Trusted DNS and connection broker]
+    B --> V[Validate all DNS answers; pin one numeric IP and TCP port]
+    V --> F[One connected TCP descriptor]
+    F --> W[HTTP/TLS worker: private user, mount, network and PID namespaces]
+    W --> K[Default-deny seccomp; no capabilities; read-only filesystem]
+    K --> T[Only the already-connected authorized peer]
+    S --> G[Stop and revocation watchdog]
+    G --> B
 ```
 
-The source scanner remains **separate**: it runs in a default-deny seccomp namespace without network syscalls or access to the HTTP helper, keys, state or trust policy.
+The supervisor verifies the Ed25519 signature, independent operator policy, authorization window, revocation freshness, exact origin and route grant before reserving budget. DNS resolution runs in a separately killable **trusted control-plane broker**. All returned addresses must satisfy the signed and independently verified networks and exclusions. A broad approved CIDR never becomes a worker egress grant.
 
-## Hard restrictions
+The broker connects once to the selected numeric address and exact TCP port, without a second lookup. It passes only that established socket and three pipes into a fresh sandbox. The HTTP/TLS parser starts only after the launcher has verified four changed namespaces, mounted its read-only runtime and fixed code, closed other descriptors, locked securebits, dropped every capability, and loaded seccomp.
 
-- Exact origin (including scheme and port) must appear in both independently approved origins and signed targets. A listed origin without explicit signed+trusted network CIDRs cannot connect.
-- A signed DNS name is **not** sufficient permission to connect to arbitrary DNS answers. DNS returns at most 16 distinct addresses; all answers must pass CIDR/exclusion/category checks before any target TCP connection. Literal-address origins must resolve to that same literal.
-- No unsafe unspecified, link-local, or multicast destination; excluded CIDRs override network grants. Operator route-prefix rules further limit GET/HEAD paths, defaulting to no routes. Encoded or ambiguous paths are rejected rather than normalized or guessed.
-- No redirects, automatic proxies, cookies, authorization, caller-controlled headers, request bodies, or caller-supplied TLS CA options. TLS certificates are verified with the selected approved hostname, not with the numeric pinned IP unless the hostname is an IP literal.
-- Each request consumes a durable total-request reservation, a minute-rate slot, a concurrent slot, a wall-time allowance, a private evidence reservation and the full allowed response-body allowance. Reservation is consumed even on error. Only metadata/digests are persisted.
-- A fixed subprocess runs with bounded CPU, memory, file output, fd count, clean environment and supervisor-enforced wall time; revocation/stop/policy removal terminates it.
+The worker has **no usable network interfaces or routes**, cannot create sockets, and cannot call `connect`, even on its granted descriptor. The established TCP connection retains its original kernel peer. Seccomp permits socket I/O only on that descriptor; a disconnected or closed connection cannot be replaced. This works for explicitly authorized IPv4, IPv6 and loopback endpoints. UDP, raw sockets, Unix-domain sockets, netlink, socket pairs, descriptor transfer, namespace changes, firewall changes, process creation, and alternate asynchronous networking mechanisms are denied.
 
-## Explicit non-guarantees
+The kernel enforces endpoint confinement even if the worker bypasses every Python authorization function. No privileged host networking broker, veth pair, host firewall mutation, dynamic nftables rule, or agent-controlled network policy is required. Compared with a network namespace plus nftables, the connected-descriptor design grants less authority and avoids rule-installation and teardown races. It deliberately supports only the fixed single-request transport.
 
-1. **No independent OS-level network confinement of the HTTP helper.** A compromised helper or an agent with another network tool can bypass this user-space gateway. Host firewall/VM boundary plus protected code/policy installation remain deployment requirements. This package does not implement a transparent proxy, TCP-level firewall, network namespace gateway or a private network interface.
-2. **GET is not intrinsically harmless.** Some endpoints cause side effects. Restrict paths to staged, intentionally read-only functionality. `/` in the operator route policy authorizes all GET/HEAD paths and should only be used on disposable or exhaustively approved targets.
-3. No precise wire-byte quota; response-body reservations are conservative and exclude response headers, DNS, TCP and TLS overhead. No generic traffic decryption or WAF bypass.
-4. HTTPS verifies origin identity if root trust is correct. Plain HTTP has no cryptographic authenticity. Trusted public roots or an explicitly protected/fingerprinted operator CA are required.
-5. No external notification delivery, independent off-host ledger anchoring, live update channel for revocations, or permission to access real sensitive data. An operator must maintain fresh trust revocation data and signed audit checkpoints.
-6. No cgroup enforcement, arbitrary tool isolation, OS-wide agent egress limitations or credentials yet. Run only under a tightly controlled operator process and review before real-world deployment.
+## Process authority
 
-## Acceptance tests in this package
+| Component | Authority |
+|---|---|
+| Operator | Signs scopes; controls policy, CA roots, revocations, service installation and audit checkpoints. Private signing keys stay outside runtime workers. |
+| Supervisor | Validates scope/policy, reserves budgets, records evidence, checks stop/revocation and launches only fixed broker operations. Non-root service identity. |
+| DNS/connection broker | Trusted control plane with host networking; resolves the approved hostname and opens the exact approved numeric TCP endpoint. Loads verified public CA material, creates the worker, caps output and independently enforces its deadline. Never exposed to agents. |
+| Namespace launcher | Temporarily has capabilities **only within its new user namespace** for mounts; drops them before assessment code executes. |
+| Assessment worker | Namespace UID 0 maps to the non-root host UID, but securebits, empty capability sets and no-new-privileges prevent root authority. Receives one connected TCP socket, pipes, read-only runtime and fixed code. No host configuration, ledger, signing keys or extra directory handles. |
 
-`tests/test_http_gateway.py` validates real loopback HTTP and HTTPS requests (including a locally generated private CA), strict hostname checks, untrusted CA denial, redirects not followed, absence of cookies/authorization/body in evidence, path policy, DNS-answer substitution and mixed records, denied link-local/multicast, capped bodies, cumulative request/response budgets, rate and concurrency ceilings, active stop and revocation, changed operator route grants, environment proxy rejection and CLI execution.
+Operator code, OS runtime and configuration must be installed outside agent-writable paths. No containment claim covers an attacker controlling the host, kernel, trusted broker/supervisor, operator policy or signing keys. An agent with a separate unrestricted host tool can bypass AEGIS.
 
-`tests/test_isolation.py` and `aegis_sandbox_check.py` continue proving that the original source scanner itself cannot open sockets, fork, escape mounts, gain capabilities or access host files on the current kernel.
+## Lifetimes and failure handling
 
-**These are tested local boundary checks, not a replacement for an independent penetration test of the supervisor or an OS egress policy.**
+Each operation consumes the existing durable request, per-origin rate, concurrency, runtime, evidence and worst-case response-body reservations **before DNS or TCP connection**. Failures remain charged and audited.
+
+The supervisor rechecks authorization, route grants, CA policy, revocation and emergency stop while the broker runs. Cancellation kills its process group. Independently, kernel parent-death signals connect supervisor → broker → unshare; unshare's kill-child behavior and PID namespace teardown kill the worker and close its socket after parent crashes. A broker watchdog outside the worker enforces a wall-time deadline even if the worker ignores application timeouts. Worker stdout/stderr are capped before reaching the supervisor.
+
+Namespace mounts have no host persistence. Normal completion, errors, timeout and cancellation close sockets and destroy the private namespaces. A SIGKILL can leave an empty, mode-0700 temporary directory under `/tmp/aegis-http-*`; it contains no firewall policy, credentials, mount or reusable network grant. Operators may remove those empty directories after checking no corresponding process is live. Restart always creates a fresh boundary and reauthorizes; no network rules are recovered from repository files.
+
+Setup failure can occur after the trusted broker has established an **authorized** TCP connection, but before any HTTP bytes are sent. No assessment code runs until confinement succeeds; there is no unconfined fallback. Tests inject failures at every mount step, capability dropping and seccomp installation, and interrupt partial setup.
+
+## Protections retained and precise limits
+
+- Exact origin, port, route prefixes, excluded networks, DNS rebinding checks and all-answer validation remain supervisor controls.
+- The worker verifies the inherited peer against the pinned IP/port. Host headers and HTTPS SNI retain the approved hostname. TLS verifies certificates/hostnames against a broker-supplied snapshot of system roots plus any protected, fingerprint-checked operator CA.
+- GET/HEAD only; no redirects, proxies, credentials, arbitrary headers or bodies. Response bodies are bounded, hashed and discarded.
+- The kernel confines a **TCP endpoint**, not HTTP semantics. A compromised worker can send arbitrary bytes to its one granted endpoint until killed; it could violate GET/HEAD, route or response-body rules or forge metadata. Those remain trusted application guarantees. This milestone does not make authenticated testing or arbitrary payload execution safe.
+- Response-body quotas exclude DNS, headers, TCP/TLS overhead and malicious-worker traffic. No exact kernel wire-byte quota is claimed. Fixed process count, inherited resource limits, capped pipes and the external deadline bound this worker; cgroups and arbitrary tools are outside this release.
+- Plain HTTP provides no cryptographic identity. GET may change state on poorly designed servers. Use explicitly authorized staging endpoints.
+- Off-host checkpoint retention, credential brokering, authenticated approval services and external notifications remain future/operator responsibilities.
+
+## Acceptance evidence
+
+`tests/test_egress.py` executes a fixed malicious probe through the production sandbox profile. It proves authorized TCP I/O while actual Python and raw libc socket/connect attempts return EPERM, including IPv6/UDP/Unix/netlink paths and namespace escape. It also covers descriptor hygiene, concurrent workers, missing prerequisites, interrupted setup, bounded output, deadlines and supervisor death. `tests/test_http_gateway.py` retains signed-scope, TLS, DNS, redirects, budgets, stop and revocation integration tests. `tests/test_isolation.py` retains fresh-interpreter and source-review tests.
+
+See `VERIFICATION.md` for environments actually tested. Run the acceptance tests on each deployment host; a passing unit test is not kernel evidence.

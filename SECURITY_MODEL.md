@@ -1,45 +1,48 @@
-# v1.4 runtime security model
+# AEGIS v1.4.1 security model
 
-## Assets and boundaries
+## Trust boundaries
 
-**Trusted:** operator; protected signed engagement scope and independent trust policy; pinned signer public key; supervisor implementation; trusted `aegis_worker.py`; sandbox launcher and operator-supplied system binaries; host kernel and correctly configured namespace support.
+Trusted components are the operator's authority, independently protected scope/trust/revocation files and public keys, installed supervisor and DNS/connection broker, sandbox launcher, system Python/runtime, and host kernel. Private signing keys remain operator-only.
 
-**Untrusted:** source files and symlinks in assessed repositories, scanner leads, LLM-produced plans, user-controlled application data, tool outputs and repository content. Repository code is never imported or executed.
+Assessment data, target responses, repository source, model plans and tool output are untrusted. Repository code is never executed. The worker cannot rewrite trusted configuration, state or audit records.
 
-**Out of scope:** adversarial native binaries as worker payloads; local kernel exploitation; agent with arbitrary host shell; a compromised host operator account; compromise of trust-policy/key installation. Treat kernel capabilities as defense in depth, not a proof against unknown kernel vulnerabilities.
+The assessment boundary does not protect against a compromised host/kernel, trusted broker/supervisor, operator authority, or an agent holding independent host shell/network access. Expose only the named operations in `INTEGRATION.md`.
 
-## Linux confinement steps (ordered)
+## Common worker containment
 
-1. Host service validates manifest and trust policy and checks exact authorized repository. It opens each directory component without following symlinks.
-2. Supervisor atomically reserves cumulative budget, opens a private temporary jail directory, and launches `unshare` with new user+mount+network+PID namespaces, inheriting only the authorized repo descriptor plus standard streams.
-3. Inside namespaces, trusted launcher positively verifies all four namespace identities changed and UID 0 maps to the original non-root service UID. It makes mount propagation private, mounts a small tmpfs, ro-binds system Python runtime, assessed repository and fixed reviewer code, and verifies the repo mount's device/inode equals the inherited descriptor.
-4. Launcher switches root into the new filesystem, removes write permission on the temporary root, sets `no_new_privs`, locks securebits, clears permitted/effective/inheritable and bounding capabilities, and installs a default-deny seccomp allowlist before execing the trusted worker.
-5. Worker sees only `/repo`, `/app/worker.py`, `/usr` (read-only), `/lib` and `/lib64` symlinks. It cannot access host `/etc`, `/proc`, sibling repositories, protected state or operator keys. No network interface or external route is exposed; seccomp additionally blocks socket syscalls.
-6. Supervisor polls scope and stop conditions, enforces wall time and process resource limits, and accepts only a bounded, expected JSON result. All evidence is written outside the jailed process by the supervisor into private report directories; failures have no unsandboxed fallback.
+1. The trusted supervisor validates signed authorization and independent policy, checks revocation/stop, and reserves persistent budget.
+2. A non-root service creates fresh user, mount, network and PID namespaces. The launcher positively checks all namespace identities and the single-UID mapping.
+3. The launcher makes mount propagation private, creates a bounded tmpfs root, and mounts only the system runtime and fixed worker code read-only. The source-review worker additionally receives the pinned authorized repository mounted read-only/noexec.
+4. Before chroot/exec, it closes all extra descriptors, including the original repository directory handle. Keeping a pre-chroot directory fd would allow traversal outside the intended filesystem.
+5. It sets no-new-privileges, locks root capability semantics, clears effective/permitted/inheritable/bounding capabilities and installs default-deny seccomp. Namespace UID 0 has no host-root or CAP_NET_ADMIN authority.
+6. The assessment worker cannot create processes, change namespaces/mounts or access host policy, keys, state or procfs. Missing capabilities, unsupported mounts or setup errors deny execution.
 
-## Guarantees tested directly
+## Source review
 
-`aegis_sandbox_check.py` launches a hard-coded probe in exactly this namespace layout to test positive authorized repository reads and negative repository writes, jail-root writes, host files, procfs, socket syscall, spawning child processes, application-code writes, capabilities, seccomp mode and `no_new_privs`.
+The fixed heuristic source scanner receives no sockets. Socket creation and networking syscalls remain denied. The preserved `dup`, `dup2`, `dup3` portability fix permits fresh Python startup without permitting process creation or networking. Tests exercise a fresh system interpreter after filtering.
 
-These are **observed controls on the host running the test**. They do not guarantee every other Linux environment behaves identically. Run the probe again whenever the host kernel, container runtime, user namespaces or installed libraries change.
+The authorized directory inode is pinned and checked after binding. Contents can still change concurrently; this is not a filesystem snapshot. Scanner leads are not confirmed vulnerabilities.
 
-## Known gaps and residual risks
+## HTTP transport
 
-- The sandbox is a *worker* boundary only. A model with any other shell, host tool, network client, or file access can bypass this supervisor completely. The model must be restricted to a small operator-owned API.
-- Code/policy/trust/ledger installation integrity depends on operator-controlled host permissions; an agent must never write them. No measured boot or hardware attestation exists.
-- No cgroup-v2 accounting or quota enforcement. The scan worker uses RLIMIT_CPU, RLIMIT_AS, RLIMIT_FSIZE, RLIMIT_NOFILE, an 8 MiB tmpfs, and a no-process-creation seccomp profile. These limits are appropriate for the fixed reviewer but not sufficient for arbitrary future tools.
-- The local audit hash chain alone is not externally anchored. v1.3.1 adds operator-side signed checkpoints; they detect tampering of a signed prefix **only if** an independent operator protects the signing key, retains the checkpoint off-box, and verifies it. No automatic off-box retention exists.
-- The namespace setup process temporarily has mount capabilities **inside its new user namespace** before dropping all capabilities; security relies on trusted launcher code and a patched host kernel.
-- A repository inode is pinned while scanned; content within the same filesystem can still change during review. The scanner does not provide snapshot consistency or file-integrity guarantees.
-- A process may inherit standard I/O pipes, but no credentials, extra host file handles, proxies, or broadly writable mounts. Normal deployment must ensure supervisor paths and OS installation are not controlled by an untrusted agent.
-- An uncontrolled scan worker's stderr/stdout could exhaust supervisor memory in a generalized execution system; v1.3.1 runs only the fixed bounded reviewer. Future tool adapters need streaming limits.
-- v1.4 now includes a **separate trusted HTTP helper** restricted in code to signed origins, signed IP/CIDRs, operator-approved route prefixes, TLS verification, and request/body budgets. This helper has host-level network access and **no independently enforced kernel egress allowlist**. An agent with an unbrokered network tool could bypass it. See `HTTP_GATEWAY_SECURITY.md`.
-- There is still **no credential broker, high-impact approval service, OS egress sandbox for HTTP helpers, external revocation updater or alert delivery**.
+The trusted broker resolves the approved hostname and opens only the verified numeric IP and exact TCP port. The worker receives that connected descriptor inside an otherwise offline namespace. It can exchange bytes only with that kernel-established peer; seccomp denies new sockets and every connect call, including reconnect/disconnect on the granted fd. Socket I/O and its nonblocking ioctl are restricted to that fd.
 
-**Security policy:** any failed containment step denies operation. Never downgrade to a bare subprocess, relax the seccomp policy, or allow arbitrary executables to preserve availability.
+Three standard streams must be pipes. No extra host descriptor, Unix socket, DNS client, proxy channel or writable configuration is exposed. The broker supplies only public CA material; TLS and HTTP parsing occur inside the confined worker. Kernel parent-death signals and namespace teardown close the capability on crashes; a trusted guardian enforces the deadline and output caps.
 
-## v1.3.1 incremental mitigations
+The trusted DNS/connection broker intentionally has host networking. It is part of the control plane, not an assessment process. An agent cannot invoke it directly. See `HTTP_GATEWAY_SECURITY.md` for the architecture, authority table and race/lifecycle analysis.
 
-The fixed worker now loads a **positive libseccomp syscall allowlist**, with `EPERM` for unspecified calls. It still permits `execve` for the trusted launch transition and `prctl` for the diagnostic; these are acknowledged residual permissions. Kernel checks verify arbitrary `ioctl` is not permitted. The allowlist has been tested on the build environment only; do not extrapolate to all architectures or future analyzers.
+## Compromised-worker limits
 
-The auditor can now sign and verify checkpoints of a self-consistent ledger head with a **separate operator key**, but the checkpointer/verification workflow remains operator-side. This package does not transmit or store the checkpoints on an independent host automatically. Protect the signing key, pinned public key and checkpoint retention independently. A rollback of the unanchored suffix remains detectable only after the next successful external checkpoint.
+A compromised gateway cannot open a connection to another IP or port, use UDP/IPv6/Unix/netlink as alternate paths, change firewall/routing configuration, escape namespaces, inherit other sessions' sockets or read host signing keys. It can misuse the already-granted TCP stream until its deadline or cancellation. The kernel does not parse HTTP routes, count response-body bytes or authenticate result metadata. Keep approved endpoints narrow and staged; do not expose credentials or arbitrary tools.
+
+## Remaining risks and operational requirements
+
+- Protect code, OS runtime, policy, keys and ledger with operator-controlled permissions. No measured boot or hardware attestation is provided.
+- Deploy on a tested Linux host with user/mount/network/PID namespaces, libseccomp and supported read-only runtime bind mounts. A runtime subtree containing locked nested mounts can deny setup; never replace the failed boundary with an unconfined process.
+- Resource limits cover the fixed workers, not general third-party tools. There is no cgroup accounting or exact wire-byte quota.
+- Local audit hash chains require separately signed checkpoints retained and verified off-box. An unanchored suffix can be rewritten; no automatic off-host delivery exists.
+- Runtime enforcement requires fresh operator revocation snapshots and a reliable host clock. No credential broker, authenticated approvals, session protocol, updater or external alert delivery is implemented.
+- Namespace resources and socket grants disappear with processes. A hard crash may leave empty protected temporary directories; they do not retain network authority.
+- This is test evidence for a specific configuration, not a certification or a substitute for independent security review.
+
+Run `aegis_sandbox_check.py`, kernel egress tests and the complete suite on the deployment host after kernel/runtime or configuration changes.

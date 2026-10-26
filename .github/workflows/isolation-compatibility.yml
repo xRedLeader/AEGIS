@@ -1,0 +1,60 @@
+name: Kernel containment and regression tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  unit:
+    name: Policy / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install existing dependencies
+        run: |
+          /usr/bin/python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Unprivileged policy and schema tests
+        env:
+          PYTHONPATH: tests
+        run: .venv/bin/python -m unittest test_preflight test_report_schema test_egress.BrokerInputTests -v
+  kernel:
+    name: Kernel / ${{ matrix.os }} / system Python
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install existing dependencies
+        run: |
+          /usr/bin/python3 --version
+          /usr/bin/python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Require actual kernel isolation
+        run: |
+          if ! .venv/bin/python aegis_sandbox_check.py; then
+            echo "::error::NOT EXECUTED: kernel acceptance requires working namespaces and seccomp; no fallback permitted."
+            exit 1
+          fi
+      - name: Full regression and adversarial kernel acceptance
+        run: |
+          .venv/bin/python - <<'PY'
+          import sys, unittest
+          suite = unittest.defaultTestLoader.discover("tests")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if result.skipped:
+              print("NOT EXECUTED:", result.skipped)
+          sys.exit(0 if result.wasSuccessful() and not result.skipped else 1)
+          PY
+      - name: Signed source-review and HTTP demos
+        run: |
+          .venv/bin/python aegis_demo.py
+          .venv/bin/python aegis_http_demo.py
