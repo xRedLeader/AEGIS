@@ -1,5 +1,7 @@
 # v1.4 portability and trust-file hardening patch
 
+Historical baseline patch included in v1.4.1. For the subsequent kernel containment implementation and its actual CI results, see `RELEASE_NOTES.md` and `VERIFICATION.md`.
+
 This patch updates the v1.4 source without changing the published `v1.4`
 release snapshot. It addresses an independent Ubuntu 22.04 / CPython 3.10
 compatibility finding: the default-deny seccomp profile omitted `dup`,

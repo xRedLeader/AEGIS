@@ -25,7 +25,16 @@ The local acceptance environment is Ubuntu 24.04.1, system Python 3.12.3, kernel
 
 Unmodified WSL layout initially failed closed while binding `/usr`, because WSL adds locked child mounts there. Testing uses a disposable **outer private mount namespace**, created by root only for test setup, with those WSL-specific child mounts removed inside it. Tests and every AEGIS operation then run as the normal non-root user from the native Linux filesystem. The host mount configuration and production sandbox policy are unchanged. This environment is not claimed to be a stock Ubuntu kernel.
 
-Final local run: **120 tests passed, 0 failed, 0 skipped** in 35.596 seconds. The independent source sandbox probe passed all 14 checks. The signed source-review demo and local HTTP demo both passed. The egress probe passed all 23 checks, including actual EPERM denials and successful authorized TCP exchange. GitHub Ubuntu 22.04/24.04 results are pending; no result is inferred from the local run.
+Final local run: **120 tests passed, 0 failed, 0 skipped** in 35.596 seconds. The independent source sandbox probe passed all 14 checks. The signed source-review demo and local HTTP demo both passed. The egress probe passed all 23 checks, including actual EPERM denials and successful authorized TCP exchange. The final focused egress run passed all 16 tests after strengthening the interrupted-setup and uncooperative-worker assertions.
+
+GitHub [acceptance run 40390198086](https://github.com/xRedLeader/AEGIS/actions/runs/40390198086) verified implementation revision `6b1f08fdd6333321246172a85db19f9a537ee03a` on October 26, 2026:
+
+| Environment | Full suite | Additional verification |
+|---|---|---|
+| Ubuntu 22.04, system Python 3.10.12 | 120 passed, 0 failed, 0 skipped (36.532s) | Policy job, source kernel probe and both signed demos passed. |
+| Ubuntu 24.04, system Python 3.12.3, named AppArmor userns opt-in | 120 passed, 0 failed, 0 skipped (36.378s) | Policy job, source kernel probe and both signed demos passed. |
+
+These are observed results on independent CI hosts, not claims that every Linux distribution, container policy or Windows/macOS environment works. The four matrix jobs passed; the parallel push-triggered run also passed. No v1.4.1 release tag was created as part of this verification.
 
 ## CI and deployment acceptance
 
