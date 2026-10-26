@@ -24,12 +24,15 @@
     "max_concurrent_requests": 2,
     "max_response_body_bytes": 1048576,
     "max_total_evidence_bytes": 104857600,
-    "max_fuzz_minutes_per_target": 30
+    "max_fuzz_minutes_per_target": 30,
+    "max_total_response_bytes": 104857600
   },
   "allowed_report_roots": [],
   "allowed_alert_roots": [],
   "revocation": {
     "last_checked_utc": "2026-10-26T00:00:00Z",
     "max_staleness_seconds": 300
-  }
+  },
+  "tls_custom_ca": null,
+  "allowed_http_path_prefixes": {}
 }

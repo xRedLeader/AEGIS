@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""AEGIS v1.3.1 local supervisor with a rootless Linux namespace worker.
+"""AEGIS v1.4 local supervisor with a rootless Linux namespace worker.
 
-ONLY supports bounded read-only source review. The fixed worker runs in a
-Linux user/mount/network/PID namespace with a sealed filesystem and seccomp.
-This protects the worker; it does NOT confine an agent with independent shell
-or network access. Launch from a trusted operator-owned service.
+Supports bounded read-only source review and tightly scoped uncredentialed
+HTTP(S) metadata requests. The source scanner remains in a Linux namespace
+with seccomp and zero network access. HTTP runs in a distinct trusted helper,
+NOT inside the scanner sandbox. An agent with independent shell/network tools
+can bypass both, so expose only fixed named operations via an operator service.
 """
 from __future__ import annotations
 
@@ -238,7 +239,10 @@ class AegisSupervisor:
             worker.kill()
         worker.communicate()
 
-    def _write_report(self, info: dict, run_id: str, payload: bytes) -> str:
+    def _write_report(self, info: dict, run_id: str, payload: bytes,
+                      filename: str = "source-review.json") -> str:
+        if filename not in {"source-review.json", "http-result.json"}:
+            deny("unsupported evidence artifact filename")
         if len(payload) > MAX_RESULT_BYTES:
             deny("worker evidence exceeds reserved byte budget")
         out = Path(info["report_directory"])
@@ -255,7 +259,7 @@ class AegisSupervisor:
                 runfd = os.open(run_id, O_DIR, dir_fd=runsfd)
                 private_directory(runfd)
                 try:
-                    evidencefd = os.open("source-review.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=runfd)
+                    evidencefd = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=runfd)
                     try:
                         os.write(evidencefd, payload)
                         os.fsync(evidencefd)
@@ -265,7 +269,7 @@ class AegisSupervisor:
                     os.close(runfd)
             finally:
                 os.close(runsfd)
-        return str(out / "runs" / run_id / "source-review.json")
+        return str(out / "runs" / run_id / filename)
 
     def scan(self, repo: Path, budget_seconds: int = 15) -> dict:
         if sys.platform != "linux" or not hasattr(os, "O_NOFOLLOW"):
@@ -371,15 +375,20 @@ def operator_stop(state_root: Path, eid: str):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="AEGIS v1.3 sandboxed, local-only action supervisor")
+    ap = argparse.ArgumentParser(description="AEGIS v1.4 scoped source review and HTTP metadata supervisor")
     ap.add_argument("--manifest", type=Path)
     ap.add_argument("--signature", type=Path)
     cmds = ap.add_subparsers(dest="command", required=True)
     sc = cmds.add_parser("scan", help="Bounded, read-only static lead scan; no target code execution")
     sc.add_argument("--repo", type=Path, required=True)
     sc.add_argument("--seconds", type=int, default=15)
+    ht = cmds.add_parser("http", help="Controlled GET/HEAD to an exact signed HTTP(S) origin and pinned network")
+    ht.add_argument("--url", required=True)
+    ht.add_argument("--method", choices=["GET", "HEAD"], default="GET")
+    ht.add_argument("--seconds", type=int, default=15)
     cmds.add_parser("audit", help="Check chained audit integrity")
-    cmds.add_parser("usage", help="Show cumulatively reserved budgets")
+    cmds.add_parser("usage", help="Show cumulatively reserved runtime/evidence budgets")
+    cmds.add_parser("http-usage", help="Show persistent HTTP request/concurrency/body reservations")
     stop = cmds.add_parser("stop", help="Operator-only, irreversible emergency stop marker")
     stop.add_argument("--engagement-id", required=True)
     args = ap.parse_args(argv)
@@ -398,9 +407,18 @@ def main(argv=None):
         s = AegisSupervisor(args.manifest, args.signature, Path(trust_text), Path(state_text))
         if args.command == "scan":
             output = s.scan(args.repo, budget_seconds=args.seconds)
+        elif args.command == "http":
+            from aegis_http_runtime import AegisHttpSupervisor
+            s = AegisHttpSupervisor(args.manifest, args.signature, Path(trust_text), Path(state_text))
+            output = s.request(args.url, method=args.method, budget_seconds=args.seconds)
         elif args.command == "usage":
             info, _ = s._guard()
             output = s.usage(info["engagement_id"])
+        elif args.command == "http-usage":
+            from aegis_http_runtime import AegisHttpSupervisor
+            s = AegisHttpSupervisor(args.manifest, args.signature, Path(trust_text), Path(state_text))
+            info, _ = s._guard()
+            output = s.http_usage(info["engagement_id"])
         else:
             s._guard()
             output = {"status": "LOCAL_AUDIT_CHAIN_VALID_UNANCHORED" if s.verify_audit_chain() else "AUDIT_INVALID"}

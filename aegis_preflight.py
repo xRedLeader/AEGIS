@@ -220,8 +220,9 @@ def _validate_contents(raw: bytes, trust: dict, signer: dict,
     require(lim["deterministic_hypothesis_minutes"] <= lim["max_single_run_minutes"],
             "single deterministic hypothesis exceeds permitted run time")
     if origins or networks:
-        require(lim["max_total_requests"] > 0 and lim["max_requests_per_minute_per_origin"] > 0 and lim["max_concurrent_requests"] > 0,
-                "network testing requires explicit nonzero network limits")
+        require(lim["max_total_requests"] > 0 and lim["max_requests_per_minute_per_origin"] > 0 and lim["max_concurrent_requests"] > 0 and
+                lim["max_total_response_bytes"] >= lim["max_response_body_bytes"],
+                "network testing requires nonzero request limits and a sufficient cumulative response-body budget")
 
     out = canon(manifest["reporting"]["output_dir"])
     alert = canon(manifest["reporting"]["critical_alert"]["path"])

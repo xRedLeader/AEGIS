@@ -1,17 +1,16 @@
-# AEGIS v1.3.1 verification record
+# v1.4 verification protocol
 
-Run on each intended Linux host as a **non-root** service identity before deployment:
+Run as an **unprivileged Linux user** on the deployment host:
 
 ```bash
+python -m unittest discover -s tests -q
 python aegis_sandbox_check.py
-python -m unittest discover -s tests -v
 python aegis_demo.py
+python aegis_http_demo.py
 ```
 
-The sandbox diagnostic must pass **all 13 kernel checks**, including new negative tests for an unspecified `getppid` syscall and an unapproved ioctl request. The automated suite includes active Linux namespace integration and independent audit-checkpoint forgery tests. The demo is local-only; it does not send packets to real targets.
-
-Keep three assurance claims distinct:
-
-- OS containment of **one trusted fixed source-review worker** is implemented and tested under Linux.
-- A locally verifiable audit chain and separately signed, manually exported checkpoints are implemented. Automatic off-host retention/continuous runtime verification are not.
-- Network-enabled pentesting, general-purpose analyzer sandboxes, credentials and runtime cgroup-v2 limits are **not yet implemented**.
+- Kernel isolation tests must pass on the actual host; no fallback to an unconfined scanner is permitted.
+- HTTP integration tests use a local, dynamically allocated loopback port. HTTPS tests generate an ephemeral CA and server certificate, validate trusted-CA success and reject untrusted roots and hostname mismatch. Neither tests nor demos need internet access.
+- Negative cases exercise out-of-scope ports/CIDRs, conflicting DNS answers, stale authorization, method/path controls, max body bytes, persistent request limits, concurrency, emergency stop, policy route withdrawal, proxy variables and redirect non-following.
+- Test suite success does not mean there is an OS-wide outbound packet firewall. The trusted HTTP transport runs with host network access and relies on software policies, operator process isolation and protected installation.
+- Verify packaged ZIP checksums and rerun tests from the **extracted archive** before distributing or deploying.

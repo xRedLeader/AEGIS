@@ -1,24 +1,21 @@
-# AEGIS v1.3.1 — containment and audit hardening
+# AEGIS v1.4 — executable controlled HTTP(S) gateway
 
-This release is an incremental security hardening of v1.3, not the network-enabled v1.4 milestone.
+## Added
 
-## Implemented
+- `aegis_http_policy.py`: strict URL-origin parsing and signed-CIDR pinning; rejects mixed DNS answers and unsafe IP classes.
+- `aegis_http_gateway.py`: fixed trusted subprocess for time-bounded DNS lookup and direct, pinned-IP HTTP/HTTPS GET/HEAD; TLS system roots, hostname verification, optional SHA-pinned operator CA; no redirects/proxies/secrets/caller headers; body hashes only.
+- `aegis_http_runtime.py`: persistent per-engagement HTTP request, active slot, per-origin minute rate and cumulative worst-case body reservations in same protected SQLite audit/state; enforced watchdog/revocation/stop; private JSON metadata report.
+- Supervisor CLI `http` and `http-usage`; `aegis_http_demo.py` runs a signed, scope-controlled **loopback-only** HTTP demo.
+- Independent operator route-prefix policy (`allowed_http_path_prefixes`) that defaults to deny and can be updated mid-run.
+- Separate `HTTP_GATEWAY_SECURITY.md` detailing implemented controls and limitations.
+- Live loopback integration tests including TLS trust/hostname mismatch, DNS/IP confusion, redirects, path ambiguity, rate/byte/concurrency controls, revocation, emergency stop and proxy environment rejection.
 
-- **Default-deny seccomp:** `aegis_sandbox.py` now returns `EPERM` for unspecified syscalls and positively allows only the needs of the fixed read-only Python worker and its loading/runtime. The sole `ioctl` exception is Linux `FIOCLEX` (argument-specific), instead of allowing `ioctl` generally. On the test host the actual kernel diagnostic verifies 13 behaviors, including rejection of `getppid` and non-`FIOCLEX` `ioctl`.
-- **Local audit checks:** hash verification now checks sequence continuity and runs before budget reservation; the supervisor reports `LOCAL_AUDIT_CHAIN_VALID_UNANCHORED` for a local chain check rather than implying independent tamper resistance.
-- **Independent audit checkpoints:** `aegis_audit.py` can sign a verified ledger head using a distinct operator Ed25519 key and verify that its signed prefix is still present. The signature uses `AEGIS-audit-checkpoint-v1` domain separation and the payload binds a random ledger identity, sequence number and digest. An independent operator must store checkpoints **off-box** and pin the audit public key outside the agent's control.
-- **Adversarial tests:** reproduce the full-DB rewrite+rehash bypass of a local hash chain, demonstrate signed-checkpoint detection, and cover truncation, mismatched keys, tampering, sequence gaps, and later legitimate events.
+## Authorization compatibility
 
-## Unchanged limitations
+The signed scope **requires a new** `limits.max_total_response_bytes`, with a corresponding positive ceiling in the independent trust policy. Existing signed v1.3.1 scopes are **not** silently upgraded. Create and re-sign a v1.4 scope; keep the original engagement history separate if the scope hash changes. The example trust policy adds `allowed_http_path_prefixes: {}` (deny all) and `tls_custom_ca: null`.
 
-- The assessment action is only a fixed, read-only source scanner (simple rules, not a mature static analyzer).
-- The supervisor cannot constrain an independent agent shell; the operator must broker actions exclusively through a trusted restricted service.
-- No network gateway, credentials, remote notification delivery, cgroup-v2 policy, arbitrary analyzer execution, or automated off-box checkpoint delivery is implemented.
-- Before namespace setup completes, the trusted launcher has user-namespace mount capabilities. Protect its files and keep the host kernel patched. The allowlist is specific to the tested Python/Linux ABI: on different hosts tests may fail closed until deliberately ported and verified.
-- Audit checkpoint verification detects modification of an **already anchored prefix**. It cannot detect changes to events created after the most recent checkpoint or loss of a newer checkpoint. Schedule frequent independent retention/verification.
+All v1.3.1 local source-review, signed checkpoint and default-deny Linux worker isolation behavior is retained. HTTP helpers are **not** run inside the source scanner namespace because its network syscalls remain denied.
 
-## Compatibility
+## Scope and non-goals
 
-- v1.3 signed scope and policy formats are unchanged. Existing v1.3 audit tables are upgraded in place with a ledger identity on first use; **take an offline backup and immediately establish the first independent checkpoint**.
-- The `scan` response now names `LINUX_ROOTLESS_NAMESPACES_READONLY_ROOT_SECCOMP_DEFAULT_DENY`.
-- The local `audit` command status is renamed to `LOCAL_AUDIT_CHAIN_VALID_UNANCHORED`. For independent assurance, use `aegis_audit.py verify` with an operator-pinned public key and checkpoint.
+This release enforces policy in a trusted HTTP helper, but does not install an independent OS egress firewall or confine an LLM with host network/shell access. It does not certify target staging systems, provide arbitrary methods/headers or authenticated attacks, follow redirects, execute payloads, or deliver alerts externally. Deploy behind an authenticated operator service, not as a public network proxy.

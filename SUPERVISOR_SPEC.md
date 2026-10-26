@@ -1,6 +1,6 @@
 # AEGIS runtime supervisor — implementation contract
 
-**Status: PARTIALLY IMPLEMENTED through v1.3.1.** `aegis_supervisor.py` now launches the **fixed, read-only static reviewer** under actual rootless Linux user/mount/net/PID namespaces, read-only binds, a small jailed filesystem, dropped capabilities and libseccomp. Signed authorization, cumulative ledger, stop, revocation checks and audit are preserved. This does NOT isolate the agent itself, run arbitrary third-party tools safely, or allow outbound targets. The HTTP gateway, cgroup-v2 quotas, credential broker, authenticated approvals, external revocation updater, automatic off-box audit checkpoint retention/verification and alert delivery remain future requirements. Manually signed audit checkpoints were added in v1.3.1. See [`SECURITY_MODEL.md`](SECURITY_MODEL.md) for observed enforcement versus residual risks.
+**Status: PARTIALLY IMPLEMENTED through v1.4.** `aegis_supervisor.py` now launches the **fixed, read-only static reviewer** under actual rootless Linux user/mount/net/PID namespaces, read-only binds, a small jailed filesystem, dropped capabilities and libseccomp. Signed authorization, cumulative ledger, stop, revocation checks and audit are preserved. This does NOT isolate the agent itself, run arbitrary third-party tools safely, or allow outbound targets. A fixed, uncredentialed GET/HEAD HTTP gateway exists in v1.4, using signed origins, operator-approved routes and IPs, bounded request counters, and TLS verification. **Independent host/kernel egress confinement of this gateway** is not implemented. Cgroup-v2 quotas, credential broker, authenticated approvals, external revocation updater, automatic off-box audit checkpoint retention/verification and alert delivery remain future requirements. Manually signed audit checkpoints were added in v1.3.1. See [`SECURITY_MODEL.md`](SECURITY_MODEL.md) for observed enforcement versus residual risks.
 
 ## Trust and separation
 
@@ -12,7 +12,7 @@ Operator-controlled approval registry / trust policy |   (agent cannot modify)
                                       v
                               preflight (verify)
                                       v
-                   trusted local supervisor (PARTIAL v1.3.1)
+                   trusted local supervisor (PARTIAL v1.4)
                        |         |          |
                   restricted   action     audit / budget
                    worker      gateway       ledger
@@ -20,7 +20,7 @@ Operator-controlled approval registry / trust policy |   (agent cannot modify)
              assessment tools / test credentials
 ```
 
-**Target architecture:** the supervisor must own the network namespace, OS credentials, tool execution permissions, trusted clock, approval store, and audited budget ledger. v1.3.1 now owns a kernel-confined offline static reviewer, but does **not** own a network-enabled gateway, external credentials or the AI model process itself. The agent must ultimately receive only scoped tool interfaces. No agent instruction or YAML content is itself a sandbox.
+**Target architecture:** the supervisor must own the network namespace, OS credentials, tool execution permissions, trusted clock, approval store, and audited budget ledger. v1.4 owns a kernel-confined offline static reviewer **and** a separate software-gated, uncredentialed HTTP metadata helper. It does **not** enforce kernel-level egress limits on that HTTP helper or confine the AI model process or its potential independent tools. The agent must ultimately receive only scoped tool interfaces. No agent instruction or YAML content is itself a sandbox.
 
 ## Required additional controls before live assessments
 
@@ -56,4 +56,8 @@ The supervisor cannot be considered ready until integration tests demonstrate **
 
 ## Definition of done
 
-**v1.3.1 is accepted only for bounded local source review.** It has executable scope checks, a SQLite ledger, a kill switch and an OS-contained trusted reviewer, but does not constitute a general-purpose security sandbox or confine the model. Active network assessments may be enabled only after independently reviewed OS/network enforcement and passing integration tests of the deployed supervisor. This document is a contract for future versions, not a security guarantee.
+**v1.4 provides limited fixed GET/HEAD HTTP metadata testing as a separate trusted-helper feature.** It has executable scope checks, a SQLite ledger, a kill switch and an OS-contained trusted reviewer, but does not constitute a general-purpose security sandbox or confine the model. Active network assessments may be enabled only after independently reviewed OS/network enforcement and passing integration tests of the deployed supervisor. This document is a contract for future versions, not a security guarantee.
+
+## v1.4 implemented HTTP boundary (limited)
+
+`aegis_http_runtime.py` mediates the `http` CLI action. It verifies signed scope, independent network and exact-origin rules, operator-managed path-prefix policy, DNS address responses, TLS identity, request/response-body budgets and stop/revocation. The fixed transport subprocess accepts a single pinned numerical IP, never redirects or proxies, and retains only hashes and safe metadata. Network access does **not** run inside the original source-review seccomp namespace and does not have its own host-level egress firewall. For production use an independent OS/VM firewall preventing arbitrary outbound connections even if the trusted helper fails. Authenticated requests, high-impact approvals and generic offensive tooling are not in this release.

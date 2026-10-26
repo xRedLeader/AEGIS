@@ -4,97 +4,306 @@
   "title": "AEGIS signed scope manifest version 1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "engagement", "targets", "accounts", "methods", "limits", "reporting"],
+  "required": [
+    "schema_version",
+    "engagement",
+    "targets",
+    "accounts",
+    "methods",
+    "limits",
+    "reporting"
+  ],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {
+      "const": 1
+    },
     "engagement": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "authorized_by", "signer_id", "valid_from_utc", "valid_until_utc"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "authorized_by",
+        "signer_id",
+        "valid_from_utc",
+        "valid_until_utc"
+      ],
       "properties": {
-        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{7,63}$"},
-        "authorized_by": {"type": "string", "minLength": 3, "maxLength": 256},
-        "signer_id": {"type": "string", "minLength": 3, "maxLength": 100},
-        "valid_from_utc": {"$ref": "#/$defs/utcTime"},
-        "valid_until_utc": {"$ref": "#/$defs/utcTime"}
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{7,63}$"
+        },
+        "authorized_by": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 256
+        },
+        "signer_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 100
+        },
+        "valid_from_utc": {
+          "$ref": "#/$defs/utcTime"
+        },
+        "valid_until_utc": {
+          "$ref": "#/$defs/utcTime"
+        }
       }
     },
     "targets": {
-      "type": "object", "additionalProperties": false,
-      "required": ["repositories", "origins", "networks", "excluded_origins", "excluded_networks"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repositories",
+        "origins",
+        "networks",
+        "excluded_origins",
+        "excluded_networks"
+      ],
       "properties": {
-        "repositories": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 2}},
-        "origins": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 10}},
-        "networks": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 4}},
-        "excluded_origins": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 10}},
-        "excluded_networks": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 4}}
+        "repositories": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 2
+          }
+        },
+        "origins": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 10
+          }
+        },
+        "networks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 4
+          }
+        },
+        "excluded_origins": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 10
+          }
+        },
+        "excluded_networks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 4
+          }
+        }
       },
       "anyOf": [
-        {"properties": {"repositories": {"minItems": 1}}},
-        {"properties": {"origins": {"minItems": 1}}},
-        {"properties": {"networks": {"minItems": 1}}}
+        {
+          "properties": {
+            "repositories": {
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "origins": {
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "networks": {
+              "minItems": 1
+            }
+          }
+        }
       ]
     },
-    "accounts": {"type": "array", "items": {"type": "object", "additionalProperties": false,
-      "required": ["role", "secret_ref", "allowed_origins"],
-      "properties": {
-        "role": {"type": "string", "minLength": 2, "maxLength": 64},
-        "secret_ref": {"type": "string", "pattern": "^vault://[A-Za-z0-9/_-]+$"},
-        "allowed_origins": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 10}}
+    "accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "secret_ref",
+          "allowed_origins"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 64
+          },
+          "secret_ref": {
+            "type": "string",
+            "pattern": "^vault://[A-Za-z0-9/_-]+$"
+          },
+          "allowed_origins": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 10
+            }
+          }
+        }
       }
-    }},
+    },
     "methods": {
-      "type": "object", "additionalProperties": false,
-      "required": ["allowed", "requires_approval"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed",
+        "requires_approval"
+      ],
       "properties": {
-        "allowed": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": [
-          "source_review", "dependency_analysis", "configuration_review", "controlled_http_testing", "isolated_exploit_validation", "bounded_fuzzing", "runtime_instrumentation", "security_test_generation"
-        ]}},
-        "requires_approval": {"type": "array", "uniqueItems": true, "items": {"enum": [
-          "production_state_changes", "high_impact_exploitation", "destructive_tests", "service_disruption", "real_data_access", "credential_use_outside_test", "persistent_changes"
-        ]}}
+        "allowed": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "source_review",
+              "dependency_analysis",
+              "configuration_review",
+              "controlled_http_testing",
+              "isolated_exploit_validation",
+              "bounded_fuzzing",
+              "runtime_instrumentation",
+              "security_test_generation"
+            ]
+          }
+        },
+        "requires_approval": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "production_state_changes",
+              "high_impact_exploitation",
+              "destructive_tests",
+              "service_disruption",
+              "real_data_access",
+              "credential_use_outside_test",
+              "persistent_changes"
+            ]
+          }
+        }
       }
     },
     "limits": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "required": [
-        "engagement_runtime_minutes", "max_single_run_minutes", "deterministic_hypothesis_minutes",
-        "deterministic_failed_experiments", "nondeterministic_max_trials", "max_total_requests",
-        "max_requests_per_minute_per_origin", "max_concurrent_requests", "max_response_body_bytes",
-        "max_total_evidence_bytes", "max_fuzz_minutes_per_target"
+        "engagement_runtime_minutes",
+        "max_single_run_minutes",
+        "deterministic_hypothesis_minutes",
+        "deterministic_failed_experiments",
+        "nondeterministic_max_trials",
+        "max_total_requests",
+        "max_requests_per_minute_per_origin",
+        "max_concurrent_requests",
+        "max_response_body_bytes",
+        "max_total_response_bytes",
+        "max_total_evidence_bytes",
+        "max_fuzz_minutes_per_target"
       ],
       "properties": {
-        "engagement_runtime_minutes": {"$ref": "#/$defs/positiveInt"},
-        "max_single_run_minutes": {"$ref": "#/$defs/positiveInt"},
-        "deterministic_hypothesis_minutes": {"$ref": "#/$defs/positiveInt"},
-        "deterministic_failed_experiments": {"$ref": "#/$defs/positiveInt"},
-        "nondeterministic_max_trials": {"$ref": "#/$defs/positiveInt"},
-        "max_total_requests": {"$ref": "#/$defs/nonnegativeInt"},
-        "max_requests_per_minute_per_origin": {"$ref": "#/$defs/nonnegativeInt"},
-        "max_concurrent_requests": {"$ref": "#/$defs/nonnegativeInt"},
-        "max_response_body_bytes": {"$ref": "#/$defs/positiveInt"},
-        "max_total_evidence_bytes": {"$ref": "#/$defs/positiveInt"},
-        "max_fuzz_minutes_per_target": {"$ref": "#/$defs/positiveInt"}
+        "engagement_runtime_minutes": {
+          "$ref": "#/$defs/positiveInt"
+        },
+        "max_single_run_minutes": {
+          "$ref": "#/$defs/positiveInt"
+        },
+        "deterministic_hypothesis_minutes": {
+          "$ref": "#/$defs/positiveInt"
+        },
+        "deterministic_failed_experiments": {
+          "$ref": "#/$defs/positiveInt"
+        },
+        "nondeterministic_max_trials": {
+          "$ref": "#/$defs/positiveInt"
+        },
+        "max_total_requests": {
+          "$ref": "#/$defs/nonnegativeInt"
+        },
+        "max_requests_per_minute_per_origin": {
+          "$ref": "#/$defs/nonnegativeInt"
+        },
+        "max_concurrent_requests": {
+          "$ref": "#/$defs/nonnegativeInt"
+        },
+        "max_response_body_bytes": {
+          "$ref": "#/$defs/positiveInt"
+        },
+        "max_total_evidence_bytes": {
+          "$ref": "#/$defs/positiveInt"
+        },
+        "max_fuzz_minutes_per_target": {
+          "$ref": "#/$defs/positiveInt"
+        },
+        "max_total_response_bytes": {
+          "$ref": "#/$defs/nonnegativeInt"
+        }
       }
     },
     "reporting": {
-      "type": "object", "additionalProperties": false,
-      "required": ["output_dir", "summary_channel", "critical_alert"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "output_dir",
+        "summary_channel",
+        "critical_alert"
+      ],
       "properties": {
-        "output_dir": {"type": "string", "minLength": 3},
-        "summary_channel": {"const": "invoking_session"},
-        "critical_alert": {"type": "object", "additionalProperties": false,
-          "required": ["type", "path"],
+        "output_dir": {
+          "type": "string",
+          "minLength": 3
+        },
+        "summary_channel": {
+          "const": "invoking_session"
+        },
+        "critical_alert": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "path"
+          ],
           "properties": {
-            "type": {"const": "file"},
-            "path": {"type": "string", "minLength": 3}
+            "type": {
+              "const": "file"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 3
+            }
           }
         }
       }
     }
   },
   "$defs": {
-    "utcTime": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"},
-    "positiveInt": {"type": "integer", "minimum": 1},
-    "nonnegativeInt": {"type": "integer", "minimum": 0}
+    "utcTime": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "positiveInt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "nonnegativeInt": {
+      "type": "integer",
+      "minimum": 0
+    }
   }
 }

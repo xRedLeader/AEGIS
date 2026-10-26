@@ -37,3 +37,7 @@
 | TOCTOU/file changes | Runtime reauthorization and filesystem isolation required; not solved in preflight |
 | One fixed report dir/alert | Engagement directory remains fixed; supervisor can make controlled per-run subdirectories |
 | Cross-run replay | Documented remaining risk; supervisor session binding and ledger required |
+
+## v1.4 release review
+
+Implemented a fixed HTTP(S) testing gateway without weakening the v1.3.1 static reviewer sandbox. Signed origin and operator CIDR are both required; all DNS answers checked and one IP pinned; no proxy/redirect/cookies/credentials; TLS hostname and CA checked with optional operator-locked custom CA; independent route allowlist; durable atomic request/time/response-body budgets; watchdog stops mid-request. Tests include local HTTP/TLS and denial cases. **Not implemented:** independent network namespace or OS firewall confinement of the helper, arbitrary HTTP methods or exploit tools, credential broker or alert delivery. Those remain non-deployable generic pentest capabilities.

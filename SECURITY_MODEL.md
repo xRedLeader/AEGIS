@@ -1,4 +1,4 @@
-# v1.3.1 runtime security model
+# v1.4 runtime security model
 
 ## Assets and boundaries
 
@@ -33,7 +33,8 @@ These are **observed controls on the host running the test**. They do not guaran
 - A repository inode is pinned while scanned; content within the same filesystem can still change during review. The scanner does not provide snapshot consistency or file-integrity guarantees.
 - A process may inherit standard I/O pipes, but no credentials, extra host file handles, proxies, or broadly writable mounts. Normal deployment must ensure supervisor paths and OS installation are not controlled by an untrusted agent.
 - An uncontrolled scan worker's stderr/stdout could exhaust supervisor memory in a generalized execution system; v1.3.1 runs only the fixed bounded reviewer. Future tool adapters need streaming limits.
-- No runtime HTTP gateway, request/byte accounting, credential broker, approval service, external revocation updater or alert delivery exists yet.
+- v1.4 now includes a **separate trusted HTTP helper** restricted in code to signed origins, signed IP/CIDRs, operator-approved route prefixes, TLS verification, and request/body budgets. This helper has host-level network access and **no independently enforced kernel egress allowlist**. An agent with an unbrokered network tool could bypass it. See `HTTP_GATEWAY_SECURITY.md`.
+- There is still **no credential broker, high-impact approval service, OS egress sandbox for HTTP helpers, external revocation updater or alert delivery**.
 
 **Security policy:** any failed containment step denies operation. Never downgrade to a bare subprocess, relax the seccomp policy, or allow arbitrary executables to preserve availability.
 
