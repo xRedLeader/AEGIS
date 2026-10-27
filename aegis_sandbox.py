@@ -49,6 +49,7 @@ PROBE_HOST = Path(__file__).resolve().with_name('aegis_isolation_probe.py')
 HTTP_HOST = Path(__file__).resolve().with_name('aegis_http_gateway.py')
 AUTH_HTTP_HOST = Path(__file__).resolve().with_name('aegis_auth_helper.py')
 HTTP_PROBE_HOST = Path(__file__).resolve().with_name('aegis_egress_probe.py')
+FUZZ_HOST = Path(__file__).resolve().with_name('aegis_bounded_fuzz_worker.py')
 
 class SandboxFailure(RuntimeError):
     pass
@@ -245,7 +246,7 @@ def _setup(args):
             sock.detach()
     elif repo_fd is None or repo_fd < 3 or not stat.S_ISDIR(os.fstat(repo_fd).st_mode):
         raise SandboxFailure('authorized repository descriptor invalid')
-    worker_source = {'scan': WORKER_HOST, 'deps': DEPS_HOST, 'probe': PROBE_HOST,
+    worker_source = {'scan': WORKER_HOST, 'deps': DEPS_HOST, 'fuzz': FUZZ_HOST, 'probe': PROBE_HOST,
                      'http': HTTP_HOST, 'http-probe': HTTP_PROBE_HOST,
                      'auth-http': AUTH_HTTP_HOST}[args.mode]
     for p in (jail, worker_source):
@@ -317,7 +318,7 @@ def main(argv=None):
     ap.add_argument('--repo-fd', type=int)
     ap.add_argument('--socket-fd', type=int)
     ap.add_argument('--jail', required=True)
-    ap.add_argument('--mode', choices=('scan', 'deps', 'probe', 'http', 'http-probe', 'auth-http'), default='scan')
+    ap.add_argument('--mode', choices=('scan', 'deps', 'fuzz', 'probe', 'http', 'http-probe', 'auth-http'), default='scan')
     ap.add_argument('--host-uid', type=int, required=True)
     ap.add_argument('--parent-namespaces', required=True)
     args = ap.parse_args(argv)
