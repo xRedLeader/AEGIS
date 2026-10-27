@@ -1,3 +1,7 @@
+# AEGIS v1.7 — bounded local reproduction (development increment)
+
+This stacked development branch adds operator-pinned, kernel-isolated deterministic Python invariant testing against explicitly authorized repositories; it does not enable arbitrary fuzzing or remote exploitation. See [V1_7_LOCAL_REPRODUCTION.md](V1_7_LOCAL_REPRODUCTION.md). The Cloudflare methodology integration is reserved for **v2.1**; see [V2_1_CLOUDFLARE_AUDIT_PLAN.md](V2_1_CLOUDFLARE_AUDIT_PLAN.md). Neither v1.7 nor v2.1 is a released capability.
+
 # AEGIS v1.4.1 — Kernel-Enforced Network Containment
 
 This stacked **v1.6 development branch** adds fixed offline dependency inventory, operator-attested OSV exact-version correlation and non-executing security scanner report parsers. Read [V1_6_SECURITY_INTELLIGENCE.md](V1_6_SECURITY_INTELLIGENCE.md). The previously released version remains v1.4.1; this is not a v1.6 release or an autonomous scanner.
