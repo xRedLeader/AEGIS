@@ -26,14 +26,14 @@ A v1.4.1 compatibility failure was fixed: authenticated evidence uses the existi
 
 ## Security limitations blocking release
 
-1. The operator-only API has no independently authenticated external service boundary. Never give the model direct access to the Python authority object, vault or broker.
+1. A signed, peer-authenticated Unix operator service has been implemented and tested. Its **actual deployment** must prove separate OS identities, protected socket access and private-key handling. There is no agent-facing delegation API; models must never access the raw authority object, vault or broker.
 2. The confined helper holds the granted token. A compromised helper can misuse it on its one permitted stream, forge valid metadata or encode information in metadata/timing. The kernel constrains the endpoint, not HTTP routes, methods or secret disclosure. An authorized endpoint can receive a credential before revocation takes effect.
 3. Operator signing-key, credential vault and protected-policy lifecycles need a deployment security review. The trusted host, kernel, supervisor and connection broker remain outside the compromised-worker boundary.
 4. Remove unittest class inheritance duplication before release; other deployment host configurations are unverified.
 
 ## Release gate
 
-Keep PR #3 in draft. Do not tag v1.5 or use production credentials. The missing kernel egress boundary and hostile-helper cancellation coverage are addressed by this fix. Release still requires authenticated service APIs, independent review of credential exposure, current full Linux CI and deployment-host acceptance.
+Keep PR #3 in draft. Do not tag v1.5 or use production credentials. The missing kernel egress boundary and hostile-helper cancellation coverage are addressed by this fix. The signed local operator API and current Linux CI gates are implemented. Release still requires independently reviewed operator/agent identity separation, staging credential provisioning, deployment-host acceptance and a decision on residual bearer-token disclosure to the approved peer.
 
 
 ## Operator-service and credential-lifecycle hardening (draft)
@@ -43,3 +43,7 @@ The feature branch now includes a signed local Unix-domain operator interface (`
 Tests cover wrong signature, peer identity, expiration, replay and races, path traversal, real Unix-socket exchange, profile expiration, secret replacement/rotation and sealed snapshot immutability. The in-repository test matrix discovers these together with existing kernel egress and hostile-worker tests.
 
 **Still not a v1.5 release:** do not merge or use production credentials until CI passes on the final commit, deployer verifies operating-system identity separation and protected key provisioning, and an independent review accepts the residual risk of the credential in the kernel-confined worker memory. No general agent-facing API delegation exists.
+
+## Exact post-hardening verification
+
+At branch commit `fcce4bbe06700f4caa85a016878be14a24152a74`, **248 tests passed, 0 failed, 0 skipped** in an unprivileged Linux container. GitHub CI on both Ubuntu 22.04 and 24.04 passed the same full 248-test suite and the operator policy suite (112 tests per OS), including the real 25-check authenticated kernel egress probe. The 61 tracked-source checksums were verified from the downloaded GitHub Actions archive. These results demonstrate the tested code's behavior, not end-to-end deployment permissions or confidentiality from an already-compromised worker.
