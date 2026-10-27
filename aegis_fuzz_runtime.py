@@ -297,6 +297,8 @@ class AegisFuzzSupervisor(AegisSupervisor):
                         "case_index": smallest["case_index"],
                         "seed": plan["seed"], "max_cases": plan["max_cases"],
                         "contract": plan["contract"],
+                        "module": plan["module"],
+                        "callable": plan["callable"],
                         "source_sha256": plan["source_sha256"],
                         "replay_requires_fresh_sandbox": True,
                     }
@@ -376,14 +378,15 @@ class AegisFuzzSupervisor(AegisSupervisor):
             deny("local evidence contains no reproducible fuzz candidate")
         recipe = original.pop("minimal_reproducer", None)
         if not isinstance(recipe, dict) or set(recipe) != {
-                "case_index", "seed", "max_cases", "contract", "source_sha256",
-                "replay_requires_fresh_sandbox"}:
+                "case_index", "seed", "max_cases", "contract", "module", "callable",
+                "source_sha256", "replay_requires_fresh_sandbox"}:
             deny("local evidence has no trusted minimal recipe")
         if recipe["replay_requires_fresh_sandbox"] is not True:
             deny("local evidence replay must use a separate jail")
         policy = load_operator_policy(self.fuzz_policy, repo, self.state_root)
         entry = policy["targets"].get(module)
         if (not entry or entry["contract"] != recipe["contract"] or
+                recipe["module"] != module or recipe["callable"] != entry["callable"] or
                 entry["sha256"] != recipe["source_sha256"] or
                 recipe["seed"] != original["seed"] or
                 recipe["max_cases"] > entry["max_cases"]):
