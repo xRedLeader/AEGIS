@@ -97,6 +97,12 @@ class CredentialSessionTests(unittest.TestCase):
         with self.assertRaisesRegex(ExecutionDenied, "replay"):
             self.create()
 
+    def test_vault_in_worker_visible_runtime_is_denied(self):
+        self.policy['credential_paths']['vault://aegis/example/ordinary'] = '/usr/share/aegis/token'
+        self.policy_write()
+        with self.assertRaisesRegex(ExecutionDenied, 'sandbox runtime'):
+            self.create()
+
     def test_operator_revocation(self):
         token = self.create()["handle"]
         self.broker().revoke_session(token)

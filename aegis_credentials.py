@@ -147,6 +147,8 @@ class AegisCredentialAuthority(AegisHttpSupervisor):
             deny("credential vault paths must be absolute")
         for p in [self.credential_policy, Path(policy["public_key_pem_path"]),
                   *(Path(v) for v in policy["credential_paths"].values())]:
+            if p == Path('/usr') or Path('/usr') in p.parents:
+                deny("credential authority material overlaps sandbox runtime")
             if not p.is_absolute() or p == self.state_root or self.state_root in p.parents or any(
                     p == Path(repo) or Path(repo) in p.parents
                     for repo in info["authorized_repositories"]):
@@ -322,13 +324,12 @@ class AegisCredentialAuthority(AegisHttpSupervisor):
             raise
 
     def authenticated_request(self, handle, url, method="GET", budget_seconds=15):
-        """Operator-side approved HTTPS metadata request; credentials never enter worker.
+        """Approved HTTPS through a credential-bearing, kernel-confined helper.
 
-        This fixed trusted helper has host networking. It is not the isolated
-        assessment worker. Do not expose helper, vault FDs or this Python object
-        directly to the agent; only a protected operator service may invoke it.
+        The trusted broker passes a token snapshot and one preconnected socket
+        into the sandbox. Only a protected operator service may invoke this API.
         """
-        import hashlib
+        from aegis_http_broker import bounded_exchange, parent_death_guard, TransportError
         from aegis_http_runtime import HTTP_EVIDENCE_RESERVATION, DNS_TIMEOUT_SECONDS, MAX_REQUEST_SECONDS
         if sys.platform != "linux" or os.geteuid() == 0:
             deny("authenticated requests require non-root Linux service identity")
@@ -363,13 +364,14 @@ class AegisCredentialAuthority(AegisHttpSupervisor):
                 deny("authenticated deadline reached before sending")
             self._guard()
             self._operator_route_guard(plan)
+            ca = self._operator_tls_ca(info)
             secret_fd = self._open_secret_fd(handle, plan)
             child = None
             try:
-                from aegis_http_broker import parent_death_guard
                 parent = os.getpid()
                 child = subprocess.Popen(["/usr/bin/python3", "-I", "-S",
-                            str(HERE / "aegis_auth_helper.py"), str(secret_fd)],
+                            str(HERE / "aegis_http_broker.py"), str(parent),
+                            "--credential-fd", str(secret_fd)],
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     pass_fds=(secret_fd,), cwd="/", start_new_session=True, env={"PATH": "/usr/bin:/bin",
                         "PYTHONDONTWRITEBYTECODE": "1"},
@@ -377,45 +379,35 @@ class AegisCredentialAuthority(AegisHttpSupervisor):
                                        parent_death_guard(parent)))
             finally:
                 os.close(secret_fd)
-            request = {"scheme": "https", "hostname": plan["hostname"],
+            request = {"mode": "fetch", "scheme": "https", "hostname": plan["hostname"],
                        "port": plan["port"], "address": address, "method": method,
                        "target": plan["target"], "timeout": min(10, remaining - .2),
                        "body_limit": min(manifest["limits"]["max_response_body_bytes"], 1048576)}
             if ca:
                 request["ca_bundle"] = ca
-            raw = _json_bytes(request)
-            if len(raw) > 16384:
-                deny("trusted credential helper input exceeds cap")
-            deadline = time.monotonic() + remaining
             try:
-                while True:
-                    self._guard()
+                def live_guard():
+                    live_info, _ = self._guard()
                     self._operator_route_guard(plan)
                     self._check_session(handle, plan, allow_exhausted=True)
-                    seconds_left = deadline - time.monotonic()
-                    if seconds_left <= 0:
-                        deny("credentialed request exceeded deadline")
-                    try:
-                        stdout, stderr = child.communicate(
-                            input=raw if child.stdin and not child.stdin.closed else None,
-                            timeout=min(.2, seconds_left))
-                        break
-                    except subprocess.TimeoutExpired:
-                        # communicate remembers pending input within its internal buffer.
-                        raw = None
-                        continue
-                if child.returncode != 0 or len(stdout) > 2048:
+                    if self._operator_tls_ca(live_info) != ca:
+                        deny("credentialed TLS trust changed during request")
+                try:
+                    result = bounded_exchange(child, request,
+                        budget_seconds - (time.monotonic() - start), live_guard, 2048)
+                except (TransportError, OSError, ValueError, subprocess.SubprocessError):
                     deny("authenticated transport rejected request")
-                result = json.loads(stdout)
                 if (not isinstance(result, dict) or
                     set(result) != {"status", "http_status", "body_bytes", "redirect_not_followed"} or
                     result["status"] != "AUTH_METADATA_ONLY" or
                     type(result["http_status"]) is not int or
+                    not 100 <= result["http_status"] <= 599 or
                     type(result["body_bytes"]) is not int or
-                    type(result["redirect_not_followed"]) is not bool):
+                    not 0 <= result["body_bytes"] <= request["body_limit"] or
+                    type(result["redirect_not_followed"]) is not bool or
+                    result["redirect_not_followed"] != (300 <= result["http_status"] <= 399)):
                     deny("invalid authenticated transport result")
-                self._guard()
-                self._check_session(handle, plan, allow_exhausted=True)
+                live_guard()
                 # Never retain query, token, header values, response body or body hash.
                 evidence = {"kind": "credentialed_http_metadata_v1",
                     "engagement_id": eid, "request_id": request_id,

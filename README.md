@@ -1,6 +1,8 @@
 # AEGIS v1.4.1 — Kernel-Enforced Network Containment
 
-AEGIS is a provider-independent, authorization-scoped assessment runner. It currently provides a fixed read-only source reviewer and uncredentialed HTTP/HTTPS GET/HEAD metadata testing. It is not yet the autonomous v2.0 system in the roadmap.
+AEGIS is a provider-independent, authorization-scoped assessment runner. The released v1.4.1 provides a fixed read-only source reviewer and uncredentialed HTTP/HTTPS GET/HEAD metadata testing. It is not yet the autonomous v2.0 system in the roadmap.
+
+This v1.5 development branch also contains an operator-approved credential-session prototype with kernel-confined HTTPS transport. See [V1_5_IMPLEMENTATION_STATUS.md](V1_5_IMPLEMENTATION_STATUS.md) for its tests and remaining release gates. It remains draft; do not provision production credentials.
 
 The HTTP worker now runs inside private Linux user, mount, network and PID namespaces with default-deny seccomp. A trusted broker gives it **one already-connected TCP socket** to the verified numeric IP and port. The kernel denies new sockets, reconnects, UDP, Unix sockets, netlink and namespace changes. The worker cannot broaden its endpoint permission by modifying Python code or policy files.
 

@@ -7,27 +7,30 @@ This is **not** a v1.5 release. Do not merge or provision live credentials.
 
 - aegis_credentials.py: operator-side Ed25519 approval validation, replay protection, short-lived origin/route-bound session handles, persistent SQLite use limits and revocation, audit events, and metadata-only HTTPS orchestration.
 - aegis_approval_admin.py: offline operator-signed single-use grants.
-- aegis_auth_helper.py: fixed HTTPS GET/HEAD bearer-token metadata helper, without returning headers, secrets or response bodies.
-- tests/test_credentials.py and tests/test_auth_http.py: approval, replay, scope, concurrency, revocation, permission, synthetic TLS and redaction tests.
+- aegis_auth_helper.py: HTTPS GET/HEAD bearer-token metadata transport confined by the same namespaces, dropped capabilities and default-deny seccomp as v1.4.1. The trusted broker connects the approved endpoint and supplies a token snapshot over a bounded pipe; the helper receives no vault descriptor or host networking authority.
+- tests/test_credentials.py, tests/test_auth_http.py and tests/test_auth_egress.py: approval, replay, scope, concurrency, revocation, permission, synthetic TLS, redaction, raw syscall and hostile-helper lifecycle tests.
 - Inherited v1.4.1 kernel containment, DNS pinning, budget ledger, emergency stop and regression tests are preserved, not overwritten by older v1.4 source.
 
 A v1.4.1 compatibility failure was fixed: authenticated evidence uses the existing supervisor-approved http-result.json artifact name.
 
-## Verification
+## Confinement fix and verification
 
-- Local focused credential and HTTPS tests passed: 86/86 under an unprivileged Linux account. This number includes tests re-collected through an inherited unittest class.
-- GitHub Ubuntu 22.04 and 24.04 matrices passed against the integrated branch after the compatibility fix.
-- A one-day GitHub Actions tracked-source snapshot was exported so the exact branch revision could be independently tested.
+- The authenticated path no longer parses TLS/HTTP with trusted host networking. It uses the existing preconnected-socket broker and an `auth-http` sandbox profile with no additional networking syscalls.
+- Both layers drain capped output while enforcing deadlines. The supervisor checks live session, scope, route and CA authorization. Cancellation cleanup handles already-closed pipes and discards hostile output.
+- Vault/policy/key locations beneath the worker-visible `/usr` runtime are rejected. Returned HTTP status/counts are range-checked; headers, bodies, body hashes and extra metadata are not accepted.
+- Local full regression: **217 passed, 0 failed, 0 skipped** on Ubuntu 24.04.1 / Python 3.12.3 under an unprivileged WSL Linux account. The disposable outer mount namespace described in `VERIFICATION.md` is test setup only. The count includes existing repeated unittest collection through fixture inheritance/imports.
+- The authenticated kernel probe passed all **25 checks**, including real TLS exchange, raw connect/socket denials, cleared capabilities, descriptor hygiene and hidden vault files.
+- Hostile-helper tests verified fail-closed setup, mismatched peer rejection, stdout/stderr flooding, malformed secret-bearing results, deadline enforcement and TCP closure after session revocation/expiry, emergency stop, route/CA changes and supervisor death.
+- The existing CI workflow discovers the new tests and requires zero skipped tests on Ubuntu 22.04 and 24.04. Prior branch CI results do not validate this fix; inspect the current PR head's checks.
 - PR #3 remains draft. main and the v1.4.1 tag are unchanged.
 
 ## Security limitations blocking release
 
-1. **Authenticated helper lacks v1.4.1 kernel egress containment.** It has trusted host networking and obtains a Bearer secret through a protected file descriptor. The older uncredentialed worker's containment must not be attributed to the credential helper.
-2. The operator-only API has no independently authenticated external service boundary. Never give the model direct access to the Python authority object, vault or broker.
-3. Mid-flight revocation and cancellation require adversarial testing against an uncooperative or compromised helper. An authorized endpoint can receive a credential before revocation takes effect.
-4. Operator signing-key, credential vault and protected-policy lifecycles need a deployment security review.
-5. Remove unittest class inheritance duplication before release; other deployment host configurations are unverified.
+1. The operator-only API has no independently authenticated external service boundary. Never give the model direct access to the Python authority object, vault or broker.
+2. The confined helper holds the granted token. A compromised helper can misuse it on its one permitted stream, forge valid metadata or encode information in metadata/timing. The kernel constrains the endpoint, not HTTP routes, methods or secret disclosure. An authorized endpoint can receive a credential before revocation takes effect.
+3. Operator signing-key, credential vault and protected-policy lifecycles need a deployment security review. The trusted host, kernel, supervisor and connection broker remain outside the compromised-worker boundary.
+4. Remove unittest class inheritance duplication before release; other deployment host configurations are unverified.
 
 ## Release gate
 
-Keep PR #3 in draft. Do not tag v1.5 or use production credentials. Require independently confined authenticated transport, authenticated service APIs, fail-closed cancellation, secret non-disclosure checks, full Linux CI and deployment-host acceptance.
+Keep PR #3 in draft. Do not tag v1.5 or use production credentials. The missing kernel egress boundary and hostile-helper cancellation coverage are addressed by this fix. Release still requires authenticated service APIs, independent review of credential exposure, current full Linux CI and deployment-host acceptance.

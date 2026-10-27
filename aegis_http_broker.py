@@ -7,6 +7,7 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import selectors
 import signal
 import socket
@@ -53,7 +54,7 @@ def tls_roots(custom):
 
 
 def sandbox_command(fd, jail, mode="http"):
-    if mode not in ("http", "http-probe"):
+    if mode not in ("http", "http-probe", "auth-http"):
         raise TransportError("unknown fixed network worker")
     namespaces = ",".join(str(os.stat("/proc/self/ns/" + ns).st_ino)
                           for ns in ("user", "mnt", "net", "pid"))
@@ -64,11 +65,54 @@ def sandbox_command(fd, jail, mode="http"):
             "--host-uid", str(os.geteuid()), "--parent-namespaces", namespaces]
 
 
-def confined_exchange(sock, request, timeout, mode="http"):
-    """Bounded pipes and a wall-clock watchdog outside the assessment worker."""
+def bounded_exchange(worker, request, timeout, guard=None, output_limit=MAX_OUTPUT):
+    """Drain capped pipes while the trusted parent checks cancellation and time."""
     body = json.dumps(request, separators=(",", ":")).encode()
     if len(body) > MAX_INPUT or not 0 < timeout <= 30:
         raise TransportError("invalid confined request budget")
+    with selectors.DefaultSelector() as poll:
+        pending = memoryview(body)
+        output, errors = bytearray(), bytearray()
+        for stream, event, label in ((worker.stdin, selectors.EVENT_WRITE, "in"),
+                                     (worker.stdout, selectors.EVENT_READ, "out"),
+                                     (worker.stderr, selectors.EVENT_READ, "err")):
+            os.set_blocking(stream.fileno(), False)
+            poll.register(stream, event, label)
+        deadline = time.monotonic() + timeout
+        while poll.get_map() or worker.poll() is None:
+            if guard is not None:
+                guard()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TransportError("confined worker deadline expired")
+            for key, _ in poll.select(min(remaining, 0.1)):
+                if key.data == "in":
+                    try:
+                        pending = pending[os.write(key.fd, pending[:65536]):]
+                    except BrokenPipeError as exc:
+                        raise TransportError("confined worker rejected input") from exc
+                    if not pending:
+                        poll.unregister(key.fileobj)
+                        key.fileobj.close()
+                else:
+                    data = os.read(key.fd, 8192)
+                    if not data:
+                        poll.unregister(key.fileobj)
+                        key.fileobj.close()
+                    target = output if key.data == "out" else errors
+                    target.extend(data)
+                    if len(target) > output_limit:
+                        raise TransportError("confined worker output limit exceeded")
+        if worker.wait() != 0:
+            raise TransportError("kernel confinement or transport failed")
+        result = json.loads(output)
+        if not isinstance(result, dict):
+            raise TransportError("invalid confined result")
+        return result
+
+
+def confined_exchange(sock, request, timeout, mode="http"):
+    """Bounded pipes and a wall-clock watchdog outside the assessment worker."""
     with tempfile.TemporaryDirectory(prefix="aegis-http-") as jail:
         parent = os.getpid()
         worker = subprocess.Popen(
@@ -78,43 +122,7 @@ def confined_exchange(sock, request, timeout, mode="http"):
             preexec_fn=lambda: parent_death_guard(parent),
             env={"PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"})
         try:
-            # Capped nonblocking pipes prevent parser output exhausting the
-            # supervisor or blocking its revocation/watchdog loop.
-            with selectors.DefaultSelector() as poll:
-                pending = memoryview(body)
-                output, errors = bytearray(), bytearray()
-                for stream, event, label in ((worker.stdin, selectors.EVENT_WRITE, "in"),
-                                             (worker.stdout, selectors.EVENT_READ, "out"),
-                                             (worker.stderr, selectors.EVENT_READ, "err")):
-                    os.set_blocking(stream.fileno(), False)
-                    poll.register(stream, event, label)
-                deadline = time.monotonic() + timeout
-                while poll.get_map():
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        raise TransportError("confined worker deadline expired")
-                    for key, _ in poll.select(min(remaining, 0.1)):
-                        if key.data == "in":
-                            pending = pending[os.write(key.fd, pending[:65536]):]
-                            if not pending:
-                                poll.unregister(key.fileobj)
-                                key.fileobj.close()
-                        else:
-                            data = os.read(key.fd, 8192)
-                            if not data:
-                                poll.unregister(key.fileobj)
-                                key.fileobj.close()
-                            target = output if key.data == "out" else errors
-                            target.extend(data)
-                            if len(target) > MAX_OUTPUT:
-                                raise TransportError("confined worker output limit exceeded")
-                if worker.wait(timeout=max(0.01, deadline - time.monotonic())) != 0:
-                    raise TransportError("kernel confinement or transport failed: " +
-                                         errors.decode(errors="replace")[:512])
-                result = json.loads(output)
-                if not isinstance(result, dict):
-                    raise TransportError("invalid confined result")
-                return result
+            return bounded_exchange(worker, request, timeout)
         finally:
             # Killing unshare kills namespace init; the kernel then closes all
             # worker descriptors and kills every process in that PID namespace.
@@ -125,7 +133,7 @@ def confined_exchange(sock, request, timeout, mode="http"):
                 stream.close()
 
 
-def fetch(request):
+def fetch(request, credential_fd=None):
     request = dict(request)
     address = ipaddress.ip_address(request["address"])
     port, timeout = request["port"], request["timeout"]
@@ -133,6 +141,22 @@ def fetch(request):
             type(timeout) not in (int, float) or not 0 < timeout <= 30):
         raise TransportError("invalid broker destination or deadline")
     began = time.monotonic()
+    mode = "http"
+    if credential_fd is not None:
+        try:
+            st = os.fstat(credential_fd)
+            if (credential_fd < 3 or request["scheme"] != "https" or
+                    not stat.S_ISREG(st.st_mode) or st.st_mode & 0o077 or
+                    st.st_uid not in (0, os.geteuid()) or st.st_size > 4096):
+                raise TransportError("invalid protected credential descriptor")
+            token = os.read(credential_fd, 4097).decode("ascii")
+            if not re.fullmatch(r"[A-Za-z0-9._~+/-]{8,2048}", token):
+                raise TransportError("invalid protected credential")
+            request["bearer_token"] = token
+        finally:
+            # Never leave a host vault descriptor in the confined process tree.
+            os.close(credential_fd)
+        mode = "auth-http"
     custom = request.pop("ca_bundle", None)
     if request["scheme"] == "https":
         request["ca_pem"] = tls_roots(custom)
@@ -145,12 +169,14 @@ def fetch(request):
         remaining = timeout - (time.monotonic() - began)
         if remaining <= 0:
             raise TransportError("connection budget exhausted")
-        return confined_exchange(sock, request, remaining)
+        return confined_exchange(sock, request, remaining, mode)
 
 
 def main():
     try:
-        if sys.platform != "linux" or os.geteuid() == 0 or len(sys.argv) != 2:
+        if (sys.platform != "linux" or os.geteuid() == 0 or
+                len(sys.argv) not in (2, 4) or
+                (len(sys.argv) == 4 and sys.argv[2] != "--credential-fd")):
             raise TransportError("non-root Linux supervisor required")
         parent_death_guard(int(sys.argv[1]))
         raw = sys.stdin.buffer.read(16385)
@@ -159,10 +185,11 @@ def main():
         request = json.loads(raw)
         if not isinstance(request, dict):
             raise TransportError("invalid broker request")
-        if request.get("mode") == "resolve":
+        credential_fd = int(sys.argv[3]) if len(sys.argv) == 4 else None
+        if request.get("mode") == "resolve" and credential_fd is None:
             result = resolve(request)
         elif request.get("mode") == "fetch":
-            result = fetch(request)
+            result = fetch(request, credential_fd)
         else:
             raise TransportError("unknown broker operation")
         sys.stdout.write(json.dumps(result, separators=(",", ":")))

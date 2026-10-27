@@ -1,5 +1,7 @@
 # AEGIS v1.4.1 security model
 
+This document describes the released baseline. On the v1.5 development branch, the credential-bearing HTTPS helper also uses the same kernel boundary; the trusted broker passes a bounded token snapshot and one preconnected TCP descriptor. The vault descriptor is closed before sandbox launch. See the v1.5 section in `HTTP_GATEWAY_SECURITY.md` and the remaining gates in `V1_5_IMPLEMENTATION_STATUS.md`. A compromised credential helper may misuse its granted token on the approved stream or through metadata/timing channels; kernel endpoint confinement does not guarantee credential secrecy.
+
 ## Trust boundaries
 
 Trusted components are the operator's authority, independently protected scope/trust/revocation files and public keys, installed supervisor and DNS/connection broker, sandbox launcher, system Python/runtime, and host kernel. Private signing keys remain operator-only.

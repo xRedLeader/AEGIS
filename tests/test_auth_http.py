@@ -17,7 +17,8 @@ from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from aegis_auth_helper import exchange, TransportError
+import aegis_http_broker as transport
+from aegis_http_gateway import TransportError
 from aegis_approval_admin import sign_grant
 from test_credentials import CredentialSessionTests
 from aegis_supervisor import ExecutionDenied
@@ -36,6 +37,8 @@ class CapturingHandler(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
 
 
+@unittest.skipUnless(sys.platform == 'linux' and os.geteuid() != 0,
+                     'NOT EXECUTED: requires non-root Linux namespaces and seccomp')
 class AuthTransportTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -47,6 +50,7 @@ class AuthTransportTests(unittest.TestCase):
         cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
             .public_key(key.public_key()).serial_number(x509.random_serial_number())
             .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=1))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
             .add_extension(x509.SubjectAlternativeName([x509.DNSName('staging.test.example')]), critical=False)
             .sign(key, hashes.SHA256()))
         self.key = p / 'tls.key'
@@ -74,21 +78,25 @@ class AuthTransportTests(unittest.TestCase):
             'body_limit':2048,
             'ca_bundle':{'path':str(self.pem), 'sha256':__import__('hashlib').sha256(self.pem.read_bytes()).hexdigest()}}
 
+    def fetch(self, req=None):
+        # The broker consumes and closes the protected descriptor before sandboxing.
+        return transport.fetch(dict(self.req if req is None else req, mode='fetch'),
+                               os.open(self.token, os.O_RDONLY))
+
     def test_genuine_tls_request_and_no_secret_in_result(self):
-        fd = os.open(self.token, os.O_RDONLY)
-        try: result = exchange(self.req, fd)
-        finally: os.close(fd)
+        result = self.fetch()
         self.assertEqual(result['http_status'], 200)
         self.assertEqual(self.server.auth_seen, 'Bearer TEST-only-credential-xyz-123456')
         self.assertEqual(self.server.target_seen, '/secure/status')
         self.assertNotIn('credential', json.dumps(result).lower())
         self.assertEqual(set(result), {'status', 'http_status', 'body_bytes', 'redirect_not_followed'})
 
-    def test_fresh_trusted_helper_process_with_inherited_fd(self):
+    def test_fresh_broker_confines_helper_with_inherited_fd(self):
         fd = os.open(self.token, os.O_RDONLY)
         try:
-            process = subprocess.run([sys.executable, '-I', '-S', str(Path(__file__).parents[1] / 'aegis_auth_helper.py'), str(fd)],
-                input=json.dumps(self.req), text=True, capture_output=True,
+            process = subprocess.run([sys.executable, '-I', '-S', str(Path(__file__).parents[1] / 'aegis_http_broker.py'),
+                str(os.getpid()), '--credential-fd', str(fd)],
+                input=json.dumps(dict(self.req, mode='fetch')), text=True, capture_output=True,
                 timeout=8, pass_fds=(fd,))
         finally: os.close(fd)
         self.assertEqual(process.returncode, 0, process.stderr)
@@ -97,32 +105,22 @@ class AuthTransportTests(unittest.TestCase):
 
     def test_hostname_mismatch_fails_tls(self):
         req = dict(self.req, hostname='wrong.test.example')
-        fd = os.open(self.token, os.O_RDONLY)
-        try:
-            with self.assertRaises(ssl.SSLError): exchange(req, fd)
-        finally: os.close(fd)
+        with self.assertRaises(TransportError): self.fetch(req)
+        self.assertIsNone(self.server.auth_seen)
 
     def test_untrusted_ca_fails_closed(self):
         req = dict(self.req); del req['ca_bundle']
-        fd = os.open(self.token, os.O_RDONLY)
-        try:
-            with self.assertRaises(ssl.SSLError): exchange(req, fd)
-        finally: os.close(fd)
+        with self.assertRaises(TransportError): self.fetch(req)
+        self.assertIsNone(self.server.auth_seen)
 
     def test_newline_in_secret_rejected(self):
         self.token.write_text('TEST-only-token\nInjected-Header:value')
-        fd = os.open(self.token, os.O_RDONLY)
-        try:
-            with self.assertRaises(TransportError): exchange(self.req, fd)
-        finally: os.close(fd)
+        with self.assertRaises(TransportError): self.fetch()
 
     def test_plaintext_and_invalid_route_rejected(self):
-        fd = os.open(self.token, os.O_RDONLY)
-        try:
-            for req in [dict(self.req, scheme='http'),
-                        dict(self.req, target='/secure/hi\r\nX:1')]:
-                with self.assertRaises(TransportError): exchange(req, fd)
-        finally: os.close(fd)
+        for req in [dict(self.req, scheme='http'),
+                    dict(self.req, target='/secure/hi\r\nX:1')]:
+            with self.assertRaises(TransportError): self.fetch(req)
 
 
 class OperatorSignerTests(CredentialSessionTests):
@@ -154,7 +152,6 @@ if __name__ == '__main__': unittest.main()
 class AuthenticatedSupervisorIntegration(unittest.TestCase):
     """Synthetic end-to-end broker request; no external target or credential used."""
     def setUp(self):
-        from unittest import mock
         import hashlib
         self.credential_fx = CredentialSessionTests('test_create_and_use_without_exposing_vault_reference')
         self.credential_fx.setUp()
@@ -182,13 +179,6 @@ class AuthenticatedSupervisorIntegration(unittest.TestCase):
         # All resolution still goes through signed CIDR checks; synthetic DNS
         # maps an authorized hostname to an explicit signed loopback IP.
         self.broker._resolve = lambda hostname, port, timeout, route_plan=None: ['127.0.0.1']
-        # For old v1.4 local test baseline only: v1.4.1 has the real broker.
-        # Pdeathguard remains exercised by existing v1.4.1 kernel suite.
-        import sys, types
-        self.stub = mock.patch.dict(sys.modules, {'aegis_http_broker':
-            types.SimpleNamespace(parent_death_guard=lambda parent: None)})
-        self.stub.start()
-        self.addCleanup(self.stub.stop)
 
     @unittest.skipIf(os.geteuid() == 0, 'requires non-root test user')
     def test_authenticated_operation_and_redacted_evidence(self):
