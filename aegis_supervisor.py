@@ -175,10 +175,10 @@ class AegisSupervisor:
         digest = hashlib.sha256((prev + "\n" + payload).encode()).hexdigest()
         con.execute("INSERT INTO audit(event,previous_hash,digest) VALUES (?,?,?)", (payload, prev, digest))
 
-    def reserve(self, seconds: int) -> tuple[dict, dict, str]:
+    def reserve(self, seconds: int, method: str = "source_review") -> tuple[dict, dict, str]:
         info, m = self._guard()
-        if "source_review" not in info["approved_methods"]:
-            deny("source_review is not authorized")
+        if method not in ("source_review", "dependency_analysis") or method not in info["approved_methods"]:
+            deny(method + " is not authorized")
         if type(seconds) is not int or seconds < 1 or seconds > m["limits"]["max_single_run_minutes"] * 60:
             deny("requested run duration exceeds signed single-run limit")
         eid = info["engagement_id"]
@@ -220,7 +220,9 @@ class AegisSupervisor:
             self._event(con, {"type": status, "engagement_id": eid, "run_id": run_id, "notes": notes[:160]})
             con.commit()
 
-    def _worker_command(self, repo_fd: int, jail: Path) -> list[str]:
+    def _worker_command(self, repo_fd: int, jail: Path, mode: str = "scan") -> list[str]:
+        if mode not in ("scan", "deps"):
+            deny("fixed source worker mode denied")
         # Fixed, trusted scan entrypoint: never passes a model-supplied command.
         # No insecure fallback if user namespaces / seccomp are unavailable.
         namespaces = ','.join(str(os.stat('/proc/self/ns/' + name).st_ino)
@@ -228,7 +230,7 @@ class AegisSupervisor:
         return ["/usr/bin/unshare", "--user", "--map-root-user", "--mount",
                 "--net", "--pid", "--fork", "--kill-child", "--propagation", "private",
                 "--", "/usr/bin/python3", "-I", "-S", str(HERE / "aegis_sandbox.py"),
-                "--repo-fd", str(repo_fd), "--jail", str(jail), "--mode", "scan",
+                "--repo-fd", str(repo_fd), "--jail", str(jail), "--mode", mode,
                 "--host-uid", str(os.geteuid()), "--parent-namespaces", namespaces]
 
     @staticmethod
@@ -245,7 +247,7 @@ class AegisSupervisor:
 
     def _write_report(self, info: dict, run_id: str, payload: bytes,
                       filename: str = "source-review.json") -> str:
-        if filename not in {"source-review.json", "http-result.json"}:
+        if filename not in {"source-review.json", "http-result.json", "dependency-inventory.json"}:
             deny("unsupported evidence artifact filename")
         if len(payload) > MAX_RESULT_BYTES:
             deny("worker evidence exceeds reserved byte budget")
@@ -275,7 +277,10 @@ class AegisSupervisor:
                 os.close(runsfd)
         return str(out / "runs" / run_id / filename)
 
-    def scan(self, repo: Path, budget_seconds: int = 15) -> dict:
+    def scan(self, repo: Path, budget_seconds: int = 15, *, mode: str = "scan") -> dict:
+        if mode not in ("scan", "deps"):
+            deny("unsupported offline assessment mode")
+        method = "source_review" if mode == "scan" else "dependency_analysis"
         if sys.platform != "linux" or not hasattr(os, "O_NOFOLLOW"):
             deny("v1.3.1 requires Linux with POSIX no-follow support")
         if os.geteuid() == 0:
@@ -289,14 +294,16 @@ class AegisSupervisor:
         with open_directory_nofollow(requested) as repo_fd:
             if not stat.S_ISDIR(os.fstat(repo_fd).st_mode):
                 deny("invalid repo directory")
-            info, m, run_id = self.reserve(budget_seconds)
+            info, m, run_id = self.reserve(budget_seconds, method)
             eid = info["engagement_id"]
             worker = None
             jail = None
             try:
                 self._guard()
                 jail = Path(tempfile.mkdtemp(prefix="sandbox-", dir=self.state_root))
-                worker = subprocess.Popen(self._worker_command(repo_fd, jail),
+                worker_cmd = (self._worker_command(repo_fd, jail) if mode == "scan"
+                              else self._worker_command(repo_fd, jail, mode))
+                worker = subprocess.Popen(worker_cmd,
                                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                           stderr=subprocess.PIPE, cwd="/", start_new_session=True,
                                           env={"PATH": "/usr/bin:/bin", "PYTHONNOUSERSITE": "1",
@@ -319,15 +326,21 @@ class AegisSupervisor:
                 if len(stdout) > MAX_RESULT_BYTES:
                     deny("trusted source reviewer produced excessive evidence")
                 result = json.loads(stdout)
-                if result.get("status") != "STATIC_LEADS_NOT_CONFIRMED_VULNERABILITIES":
+                expected = ("STATIC_LEADS_NOT_CONFIRMED_VULNERABILITIES" if mode == "scan"
+                            else "OFFLINE_DEPENDENCY_INVENTORY_NOT_VULNERABILITY_VERIFICATION")
+                if not isinstance(result, dict) or result.get("status") != expected:
                     deny("unexpected worker result")
+                if mode == "deps" and (not isinstance(result.get("packages"), list) or
+                                       len(result["packages"]) > 150):
+                    deny("invalid bounded dependency inventory")
                 self._guard()
-                path = self._write_report(info, run_id, stdout)
+                path = self._write_report(info, run_id, stdout,
+                                          "source-review.json" if mode == "scan" else "dependency-inventory.json")
                 self._finish(eid, run_id, "completed")
-                return {"status": "COMPLETED_STATIC_REVIEW_ONLY", "engagement_id": eid,
+                return {"status": "COMPLETED_STATIC_REVIEW_ONLY" if mode == "scan" else "COMPLETED_OFFLINE_DEPENDENCY_INVENTORY", "engagement_id": eid,
                         "run_id": run_id, "report": path, "summary": result["summary"],
                         "isolation": "LINUX_ROOTLESS_NAMESPACES_READONLY_ROOT_SECCOMP_DEFAULT_DENY",
-                        "unverified_leads": len(result["candidates"]),
+                        "unverified_leads": len(result["candidates"]) if mode == "scan" else 0,
                         "reserved_runtime_seconds": budget_seconds}
             except BaseException as exc:
                 if worker and worker.poll() is None:
@@ -386,6 +399,14 @@ def main(argv=None):
     sc = cmds.add_parser("scan", help="Bounded, read-only static lead scan; no target code execution")
     sc.add_argument("--repo", type=Path, required=True)
     sc.add_argument("--seconds", type=int, default=15)
+    dp = cmds.add_parser("dependencies", help="Offline read-only dependency inventory; no scanner execution")
+    dp.add_argument("--repo", type=Path, required=True)
+    dp.add_argument("--seconds", type=int, default=15)
+    intel = cmds.add_parser("intel-assess", help="Signed offline OSV snapshot against confined dependency inventory")
+    intel.add_argument("--repo", type=Path, required=True)
+    intel.add_argument("--snapshot", type=Path, required=True)
+    intel.add_argument("--snapshot-signature", type=Path, required=True)
+    intel.add_argument("--seconds", type=int, default=15)
     ht = cmds.add_parser("http", help="Controlled GET/HEAD to an exact signed HTTP(S) origin and pinned network")
     ht.add_argument("--url", required=True)
     ht.add_argument("--method", choices=["GET", "HEAD"], default="GET")
@@ -411,6 +432,12 @@ def main(argv=None):
         s = AegisSupervisor(args.manifest, args.signature, Path(trust_text), Path(state_text))
         if args.command == "scan":
             output = s.scan(args.repo, budget_seconds=args.seconds)
+        elif args.command == "dependencies":
+            output = s.scan(args.repo, budget_seconds=args.seconds, mode="deps")
+        elif args.command == "intel-assess":
+            from aegis_intelligence_runtime import AegisIntelligenceSupervisor
+            s = AegisIntelligenceSupervisor(args.manifest, args.signature, Path(trust_text), Path(state_text))
+            output = s.assess_dependencies(args.repo, args.snapshot, args.snapshot_signature, budget_seconds=args.seconds)
         elif args.command == "http":
             from aegis_http_runtime import AegisHttpSupervisor
             s = AegisHttpSupervisor(args.manifest, args.signature, Path(trust_text), Path(state_text))

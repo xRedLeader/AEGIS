@@ -1,5 +1,7 @@
 # AEGIS v1.4.1 — Kernel-Enforced Network Containment
 
+This stacked **v1.6 development branch** adds fixed offline dependency inventory, operator-attested OSV exact-version correlation and non-executing security scanner report parsers. Read [V1_6_SECURITY_INTELLIGENCE.md](V1_6_SECURITY_INTELLIGENCE.md). The previously released version remains v1.4.1; this is not a v1.6 release or an autonomous scanner.
+
 AEGIS is a provider-independent, authorization-scoped assessment runner. The released v1.4.1 provides a fixed read-only source reviewer and uncredentialed HTTP/HTTPS GET/HEAD metadata testing. It is not yet the autonomous v2.0 system in the roadmap.
 
 This v1.5 development branch also contains an operator-approved credential-session prototype with kernel-confined HTTPS transport. See [V1_5_IMPLEMENTATION_STATUS.md](V1_5_IMPLEMENTATION_STATUS.md) for its tests and remaining release gates. It remains draft; do not provision production credentials.
