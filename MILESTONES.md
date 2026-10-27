@@ -1,4 +1,4 @@
-# AEGIS milestones toward v2.0
+# AEGIS milestones toward v2.1
 
 Each milestone is a separately tested increment, not a promised timeline. Unimplemented capabilities are future work. Failed or unexecuted acceptance gates block release.
 
@@ -11,10 +11,11 @@ Each milestone is a separately tested increment, not a promised timeline. Unimpl
 | v1.4.1 | Independent kernel-enforced network containment | Implemented and verified: connected TCP capability, offline namespaces, seccomp and external lifetime control. Ubuntu 22.04 and 24.04 each passed 120 tests with no skips. Pull-request review and deployment-host validation remain; no release tag yet. See VERIFICATION.md. |
 | v1.5 | Credential broker, operator approvals, revocation and session controls | In development: signed Unix operator API, classified expiring profiles, sealed snapshots, kernel-confined HTTPS; final CI/deployment review pending. Secrets must stay out of model context, bind to exact assets, expire/revoke, and survive restart/replay tests. Independently authenticate approvals. |
 | v1.6 | Security-tool integrations and current vulnerability intelligence | **Development, first increment**: offline sandboxed pinned dependency inventory, signed/fresh operator OSV snapshots, exact enumerated-version leads, range uncertainty, and fixed schema-only scanner imports. Automated feed retrieval, broader scanners and full ecosystem range coverage not yet implemented. See V1_6_SECURITY_INTELLIGENCE.md. |
-| v1.7 | Runtime testing, bounded fuzzing, and reproducible exploit validation | Planned. Authorized isolated replicas, reproducible impact evidence, bounded trials/resources and preserved minimized artifacts. |
+| v1.7 | Runtime testing, bounded fuzzing, and reproducible exploit validation | **Development, first slice:** operator-pinned local Python authorization-invariant harness; synthetic deterministic cases, no-network kernel isolation and replay. General purpose fuzzing, native runners, deployed impact, and broader adapters remain future work. |
 | v1.8 | Automated findings, evidence, remediation reports, and notifications | Planned. Canonical schema-validated findings, consistent reports, verified delivery and explicit transport failure handling. |
 | v1.9 | Autonomous investigation planning, attack-chain reasoning, and retesting | Planned. Typed permitted actions, verified vs uncertain claims, resumable state and replay/recovery tests without policy-write authority. |
 | v2.0 | Fully integrated, tested autonomous assessment system for authorized environments | Planned. End-to-end signed staging assessment, discovery through verified impact/remediation/retest, plus security review and failure/rollback tests. |
+| **v2.1** | **Cloudflare security-audit-skill integration** | **Planned, NOT included in v1.7/v2.0:** deterministic coverage ledgers, independent hunters/verifiers, repeated-run source revalidation, strict verdict schemas, reviewed validators, and attribution. Must preserve AEGIS's operator authorization and kernel execution boundary. |
 
 ## Before beginning v1.5
 
