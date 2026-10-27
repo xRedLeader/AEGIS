@@ -50,6 +50,7 @@ HTTP_HOST = Path(__file__).resolve().with_name('aegis_http_gateway.py')
 AUTH_HTTP_HOST = Path(__file__).resolve().with_name('aegis_auth_helper.py')
 HTTP_PROBE_HOST = Path(__file__).resolve().with_name('aegis_egress_probe.py')
 FUZZ_HOST = Path(__file__).resolve().with_name('aegis_bounded_fuzz_worker.py')
+CONTRACTS_HOST = Path(__file__).resolve().with_name('aegis_local_contracts.py')
 
 class SandboxFailure(RuntimeError):
     pass
@@ -281,6 +282,9 @@ def _setup(args):
     _bind_readonly(worker_source, jail / 'app' / 'worker.py', is_file=True)
     if args.mode == 'auth-http':
         _bind_readonly(HTTP_HOST, jail / 'app' / 'aegis_http_gateway.py', is_file=True)
+    if args.mode == 'fuzz':
+        # Trusted fixed oracle library only, never material from the assessed repo.
+        _bind_readonly(CONTRACTS_HOST, jail / 'app' / 'aegis_local_contracts.py', is_file=True)
     # A directory fd from before chroot would provide an escape via openat.
     keep = {0, 1, 2} | ({args.socket_fd} if network else set())
     for fd in (int(name) for name in os.listdir('/proc/self/fd')):
