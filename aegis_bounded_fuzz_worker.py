@@ -17,6 +17,9 @@ import re
 import stat
 import sys
 
+sys.path.insert(0, "/app")  # trusted companion, bound read-only inside isolated jail
+from aegis_local_contracts import CONTRACTS, fixtures, oracle, safe_observation, case_digest, canonical
+
 MAX_PLAN_BYTES = 8192
 MAX_SOURCE_BYTES = 131072
 MAX_CASES = 64
@@ -34,10 +37,16 @@ def _deny(reason):
 
 
 def validate_plan(plan):
+    required = {"contract", "module", "callable", "source_sha256", "seed",
+                "max_cases", "mode", "case_index"}
     if (not isinstance(plan, dict) or
-            set(plan) != {"contract", "module", "callable", "source_sha256", "seed",
-                          "max_cases", "mode", "case_index"} or
-            plan["contract"] != "strict_tenant_owner_v1" or
+            set(plan) not in (required, required | {"trials"}) or
+            plan["contract"] not in CONTRACTS or
+            ("trials" in plan and (type(plan["trials"]) is not int or
+                                   not 2 <= plan["trials"] <= 5)) or
+            (plan["contract"] != "strict_tenant_owner_v1" and
+             type(plan["max_cases"]) is int and type(plan.get("trials", 3)) is int and
+             plan["max_cases"] * plan.get("trials", 3) > 192) or
             not isinstance(plan["module"], str) or len(plan["module"]) > 300 or
             not plan["module"].endswith(".py") or
             plan["module"].startswith("/") or
@@ -137,6 +146,81 @@ def _call(fn, actor, owner):
         sys.stdout, sys.stderr = former_stdout, former_stderr
 
 
+def _observe_contract(fn, contract, fixture):
+    """Isolated target output is a bounded synthetic observation, never its text.
+
+    Recreate state and inputs on every attempt so stateful interleavings can
+    be replayed independently. Raw FD output is bounded by the supervisor.
+    """
+    former_stdout, former_stderr = sys.stdout, sys.stderr
+    sys.stdout = io.StringIO()
+    sys.stderr = io.StringIO()
+    try:
+        if contract == "json_resource_access_v1":
+            value = fn(json.loads(canonical(fixture)))
+        elif contract == "versioned_cas_v1":
+            state = dict(fixture["initial"])
+            decisions = []
+            for operation in fixture["steps"]:
+                decision = fn(state, operation["version"], operation["delta"])
+                if type(decision) is not bool:
+                    return None
+                decisions.append(decision)
+            value = {"decisions": decisions, "state": state}
+        else:
+            return None
+        return value if safe_observation(contract, value) else None
+    except BaseException:
+        return None
+    finally:
+        sys.stdout, sys.stderr = former_stdout, former_stderr
+
+
+def _execute_fixed_contract(plan, fn):
+    contract = plan["contract"]
+    schedule = fixtures(contract, plan["seed"], plan["max_cases"])
+    indexes = ([plan["case_index"]] if plan["mode"] == "replay"
+               else list(range(len(schedule))))
+    trials = plan.get("trials", 3)
+    mismatch_count = 0
+    errors = 0
+    unstable = 0
+    candidates = []
+    for index in indexes:
+        fixture = schedule[index]
+        baseline = oracle(contract, fixture)
+        results = [_observe_contract(fn, contract, fixture) for _ in range(trials)]
+        if any(result is None for result in results):
+            errors += 1
+            continue
+        observed = results[0]
+        repeat_matches = all(result == observed for result in results[1:])
+        if not repeat_matches:
+            unstable += 1
+        if observed != baseline or not repeat_matches:
+            mismatch_count += 1
+            if len(candidates) < MAX_CANDIDATES:
+                candidates.append({
+                    "case_index": index, "synthetic_input": fixture,
+                    "expected": baseline, "observed": observed,
+                    "repeated_same_result": repeat_matches,
+                    "classification": ("local_contract_mismatch_needs_validation" if repeat_matches else
+                                       "local_nondeterministic_case_needs_validation"),
+                })
+    return {
+        "status": "BOUNDED_OFFLINE_AUTHORIZATION_REPRODUCTION_ONLY",
+        "contract": contract, "source_sha256": plan["source_sha256"],
+        "mode": plan["mode"], "seed": plan["seed"],
+        "case_digest": case_digest(schedule), "trials_per_case": trials,
+        "cases_requested": len(indexes), "cases_executed": len(indexes),
+        "mismatches": mismatch_count, "non_boolean_or_exception": errors,
+        "unstable_repetitions": unstable, "candidates": candidates,
+        "summary": {"synthetic_cases": len(indexes),
+                    "repeated_mismatches": sum(c["repeated_same_result"] for c in candidates),
+                    "deployment_impact": "NOT_ESTABLISHED", "finding_status": "needs_validation"},
+    }
+
+
 def execute(plan):
     validate_plan(plan)
     source = _read_pinned_source(plan["module"], plan["source_sha256"])
@@ -148,6 +232,8 @@ def execute(plan):
     fn = ns.get(plan["callable"])
     if not callable(fn):
         _deny("selected callable missing from approved source")
+    if plan["contract"] != "strict_tenant_owner_v1":
+        return _execute_fixed_contract(plan, fn)
     schedule = cases(plan["seed"], plan["max_cases"])
     indexes = ([plan["case_index"]] if plan["mode"] == "replay"
                else list(range(len(schedule))))
