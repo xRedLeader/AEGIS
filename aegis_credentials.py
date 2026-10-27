@@ -10,11 +10,11 @@ operator revocation, exact origin/route and its independent rate/use budget.
 """
 from __future__ import annotations
 
-import base64
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
+import fcntl
 import subprocess
 import sys
 from pathlib import Path
@@ -39,7 +39,9 @@ APPROVAL_KEYS = frozenset({"version", "approval_id", "operator", "engagement_id"
     "manifest_sha256", "role", "secret_ref", "origin", "path_prefix", "not_before",
     "expires_at", "session_seconds", "max_uses"})
 CONFIG_KEYS = frozenset({"version", "configured", "operator", "public_key_pem_path",
-    "allowed_engagement_ids", "credential_paths", "max_session_seconds", "max_uses"})
+    "allowed_engagement_ids", "credential_paths", "credential_profiles", "max_session_seconds", "max_uses"})
+PROFILE_KEYS = frozenset({"classification", "allowed_origins", "issued_at_utc",
+    "expires_at_utc", "fingerprint_sha256", "exposure_acknowledged"})
 SESSION_MAX = 900
 MAX_APPROVAL_BYTES = 8192
 MAX_POLICY_BYTES = 32768
@@ -135,8 +137,28 @@ class AegisCredentialAuthority(AegisHttpSupervisor):
                 type(policy["max_uses"]) is not int or not 1 <= policy["max_uses"] <= 100):
             deny("independent credential authority is not configured for engagement")
         if (not isinstance(policy["allowed_engagement_ids"], list) or
-                not isinstance(policy["credential_paths"], dict)):
+                not isinstance(policy["credential_paths"], dict) or
+                not isinstance(policy["credential_profiles"], dict) or
+                set(policy["credential_paths"]) != set(policy["credential_profiles"])):
             deny("invalid credential authorization policy")
+        now = time.time()
+        for ref, profile in policy["credential_profiles"].items():
+            if (not isinstance(ref, str) or not ref.startswith("vault://") or
+                    not isinstance(profile, dict) or set(profile) != PROFILE_KEYS or
+                    profile["classification"] not in ("synthetic", "disposable_staging") or
+                    profile["exposure_acknowledged"] is not True or
+                    not isinstance(profile["allowed_origins"], list) or
+                    not profile["allowed_origins"] or
+                    len(profile["allowed_origins"]) != len(set(profile["allowed_origins"])) or
+                    any(not isinstance(o, str) or not o.startswith("https://") or
+                        o not in info["authorized_origins"] for o in profile["allowed_origins"]) or
+                    not isinstance(profile["fingerprint_sha256"], str) or
+                    not re.fullmatch(r"[0-9a-f]{64}", profile["fingerprint_sha256"])):
+                deny("invalid or unclassified credential profile")
+            issued, expires = _utc(profile["issued_at_utc"]), _utc(profile["expires_at_utc"])
+            max_age = 86400 if profile["classification"] == "disposable_staging" else 7 * 86400
+            if not issued <= now < expires or not 0 < expires - issued <= max_age:
+                deny("credential profile expired, not yet valid or too long-lived")
         pub = _protected_bytes(Path(policy["public_key_pem_path"]), 8192)
         key = load_pem_public_key(pub)
         if not isinstance(key, Ed25519PublicKey):
@@ -186,7 +208,8 @@ class AegisCredentialAuthority(AegisHttpSupervisor):
         accounts = [a for a in manifest["accounts"] if
                     a["role"] == obj["role"] and a["secret_ref"] == obj["secret_ref"] and
                     obj["origin"] in a["allowed_origins"]]
-        if len(accounts) != 1 or obj["secret_ref"] not in policy["credential_paths"]:
+        if (len(accounts) != 1 or obj["secret_ref"] not in policy["credential_paths"] or
+                obj["origin"] not in policy["credential_profiles"][obj["secret_ref"]]["allowed_origins"]):
             deny("credential approval does not bind a unique authorized account")
         if obj["origin"] not in info["authorized_origins"] or not obj["origin"].startswith("https://"):
             deny("credential sessions require an explicitly authorized HTTPS origin")
