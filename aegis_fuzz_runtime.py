@@ -333,6 +333,119 @@ class AegisFuzzSupervisor(AegisSupervisor):
                         pass
 
 
+    def verify_evidence(self, repository: Path, module: str, run_id: str,
+                        seconds: int = 10):
+        """Independently replay a minimal prior candidate in a fresh kernel jail.
+
+        The parent reads only protected, previously completed private evidence.
+        A second execution reserves its own runtime/evidence budget. The result
+        confirms a local synthetic reproduction, NOT deployment exploitability.
+        """
+        if not isinstance(run_id, str) or not re.fullmatch(
+                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", run_id):
+            deny("invalid local evidence identifier")
+        info, _ = self._guard()
+        repo = Path(repository)
+        if not repo.is_absolute() or str(repo.resolve()) not in info["authorized_repositories"]:
+            deny("local replay target is outside scope")
+        with self._database() as con:
+            rec = con.execute("SELECT status FROM runs WHERE run_id=? AND engagement_id=?",
+                              (run_id, info["engagement_id"])).fetchone()
+            if not rec or rec[0] != "completed":
+                deny("original evidence run must be completed")
+        base = Path(info["report_directory"]) / "runs" / run_id
+        with open_directory_nofollow(base) as fd:
+            private_directory(fd)
+            evidence_fd = os.open("bounded-fuzz.json", os.O_RDONLY | os.O_NOFOLLOW |
+                                  os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=fd)
+            try:
+                st = os.fstat(evidence_fd)
+                if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid() or
+                        st.st_mode & 0o077 or st.st_nlink != 1 or st.st_size > MAX_RESULT_BYTES):
+                    deny("untrusted local replay evidence")
+                raw = os.read(evidence_fd, MAX_RESULT_BYTES + 1)
+                if len(raw) > MAX_RESULT_BYTES:
+                    deny("local evidence exceeds permitted size")
+            finally:
+                os.close(evidence_fd)
+        try:
+            original = json.loads(raw)
+        except (ValueError, TypeError, UnicodeError) as exc:
+            raise ExecutionDenied("local evidence cannot be decoded") from exc
+        if not isinstance(original, dict) or original.get("mode") != "fuzz" or not original.get("candidates"):
+            deny("local evidence contains no reproducible fuzz candidate")
+        recipe = original.pop("minimal_reproducer", None)
+        if not isinstance(recipe, dict) or set(recipe) != {
+                "case_index", "seed", "max_cases", "contract", "source_sha256",
+                "replay_requires_fresh_sandbox"}:
+            deny("local evidence has no trusted minimal recipe")
+        if recipe["replay_requires_fresh_sandbox"] is not True:
+            deny("local evidence replay must use a separate jail")
+        policy = load_operator_policy(self.fuzz_policy, repo, self.state_root)
+        entry = policy["targets"].get(module)
+        if (not entry or entry["contract"] != recipe["contract"] or
+                entry["sha256"] != recipe["source_sha256"] or
+                recipe["seed"] != original["seed"] or
+                recipe["max_cases"] > entry["max_cases"]):
+            deny("local reproduction approval or source changed")
+        plan = {"contract": recipe["contract"], "module": module,
+                "callable": entry["callable"], "source_sha256": entry["sha256"],
+                "seed": recipe["seed"], "max_cases": recipe["max_cases"],
+                "mode": "fuzz", "case_index": None}
+        trials = original.get("trials_per_case", 3)
+        if plan["contract"] != CONTRACT:
+            plan["trials"] = trials
+        try:
+            validate_plan(plan)
+        except HarnessDenied as exc:
+            raise ExecutionDenied("invalid stored reproduction plan") from exc
+        self._check_result(original, plan)
+        sample = next((c for c in original["candidates"] if
+                       c["case_index"] == recipe["case_index"]), None)
+        if sample is None:
+            deny("minimal reproduction case is not in verified evidence")
+        smallest = min(original["candidates"], key=lambda c: (
+            len(canonical(c.get("synthetic_input", [c.get("synthetic_actor"), c.get("synthetic_owner")]))),
+            c["case_index"]))
+        if smallest["case_index"] != recipe["case_index"]:
+            deny("minimal reproduction recipe was modified")
+        replay = self.execute(repo, module, seed=recipe["seed"],
+                              max_cases=recipe["max_cases"], seconds=seconds,
+                              mode="replay", case_index=recipe["case_index"], trials=trials)
+        with open_directory_nofollow(Path(info["report_directory"]) / "runs" / replay["run_id"]) as fd:
+            out_fd = os.open("bounded-fuzz.json", os.O_RDONLY | os.O_NOFOLLOW |
+                             os.O_CLOEXEC, dir_fd=fd)
+            try:
+                replay_record = json.loads(os.read(out_fd, MAX_RESULT_BYTES + 1))
+            finally:
+                os.close(out_fd)
+        other = next(iter(replay_record["candidates"]), None)
+        def comparison(item):
+            if item is None:
+                return None
+            # A stable candidate should retain its observed result. Unstable
+            # cases may differ across independent runs; never call them proved.
+            return canonical(item)
+        stable_reproduced = (sample["repeated_same_result"] is True and
+                             comparison(other) == comparison(sample))
+        status = ("LOCAL_REPRODUCED_NEEDS_DEPLOYMENT_VALIDATION" if stable_reproduced
+                  else "LOCAL_NOT_INDEPENDENTLY_REPRODUCED")
+        with self._database() as con:
+            con.execute("BEGIN IMMEDIATE")
+            self._event(con, {"type": "offline_replay_comparison",
+                              "engagement_id": info["engagement_id"],
+                              "original_run": run_id, "replay_run": replay["run_id"],
+                              "source_sha256": entry["sha256"],
+                              "status": status})
+            con.commit()
+        return {"status": status, "original_run_id": run_id,
+                "replay_run_id": replay["run_id"],
+                "original_evidence_sha256": hashlib.sha256(raw).hexdigest(),
+                "source_sha256": entry["sha256"],
+                "case_index": recipe["case_index"], "warning": "Local fixture reproduction is not deployed exploitability."}
+
+
+
 def main(argv=None):
     import argparse
     ap = argparse.ArgumentParser(description="Operator-only bounded local authorization testing")
