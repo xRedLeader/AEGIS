@@ -1,4 +1,4 @@
-# AEGIS v1.7 development — bounded runtime reproduction (first increment)
+# AEGIS v1.7 — bounded runtime reproduction (expanded local-contract implementation)
 
 **Stacked development PR, not a released assessment capability.** Based on the open
 v1.6 branch, which itself depends on v1.5. `main`, release tags, and production
@@ -104,3 +104,40 @@ include genuine namespaces/seccomp, out-of-repository symlinks, malicious target
 socket/file/write attempts, source fingerprint drift, runaway output, replay,
 audit/budget accounting, and emergency stop. Independently review the confined
 Python execution surface before broadening to native tools or live targets.
+
+## Expanded v1.7 contract catalog and resource controls
+
+The fixed offline worker supports exactly three operator-selected contracts:
+
+| Contract | Expected callable | Reproduction model |
+|---|---|---|
+| `strict_tenant_owner_v1` | `fn(actor_id, owner_id) -> bool` | Exact synthetic owner/type equality, existing deterministic repeats |
+| `json_resource_access_v1` | `fn(request_object) -> bool` | Strict `actor`, `owner`, `operation=read` JSON object; rejects unknown keys, mismatched identities and invalid primitive types |
+| `versioned_cas_v1` | `fn(state_object, expected_version, delta) -> bool` | Synthetic versioned-state transitions with fresh state for each trial; detects stale-read acceptance and divergent states |
+
+The latter two contracts run 2–5 repeats per synthetic case and a maximum of 192 total calls per assessment. `max_trials` in the operator-owned policy further reduces that ceiling. The versioned-state harness enumerates **serialized interleavings**, not simultaneous threads or a demonstrated physical race condition.
+
+The trusted parent validates every reported synthetic case, its exact canonical fixture digest, expected oracle answer, observed value type, repeated-result classification and case-accounting bounds. Candidate records remain `needs_validation`. Target exceptions, printed output, imported modules, authorization policy files and unapproved artifacts do not become evidence.
+
+## Independent fresh-sandbox reproduction
+
+A completed run with candidates includes a parent-selected `minimal_reproducer` recipe: source SHA-256, contract, seed, case count and case index. The operator may run:
+
+```sh
+python aegis_fuzz_runtime.py \
+  --manifest /etc/aegis/scope.yaml --signature /etc/aegis/scope.sig \
+  --trust /etc/aegis/trust.json --state-root /var/lib/aegis \
+  --fuzz-policy /etc/aegis/fuzz-policy.json \
+  --repo /srv/aegis/authorized-repo --module api/json_authorize.py \
+  --verify-run <completed-run-uuid> --seconds 10
+```
+
+The supervisor loads the completed, private evidence file with no-follow checks and verifies the recorded candidate against a fresh, independently reconstructed oracle and the current operator policy. It then reserves **another** persistent runtime/evidence budget and executes only the smallest case in a newly constructed kernel namespace, with the original source file pinned by hash. The returned comparison is either `LOCAL_REPRODUCED_NEEDS_DEPLOYMENT_VALIDATION` or `LOCAL_NOT_INDEPENDENTLY_REPRODUCED`, with an audit event recording both run IDs.
+
+Replayed mismatches are **not proven exploitation**. No deployment host, external network, customer account or real credential is contacted by this local capability. Explicit service/target authorization, true concurrent race testing, native-language fuzzing, general fault injection and independently confirmed deployed impact remain future work and are not silently substituted by this harness.
+
+## Acceptance tests
+
+Run `python -m unittest discover -s tests -v` on a supported non-root Linux service host with functional namespace/seccomp restrictions; skipped kernel tests block acceptance. The test suite includes the original `test_v17_fuzz.py` and the independent-replay and policy-negative checks in `test_v17_extended.py`.
+
+Before merge, ensure the GitHub Ubuntu 22.04 and 24.04 acceptance workflow passes at the **actual PR head**, check tracked SHA-256 sums, and review the inherited v1.5/v1.6 stacked change gates. No release tag or `main` changes are made by this branch.
