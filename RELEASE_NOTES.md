@@ -42,3 +42,8 @@ This release enforces policy in a trusted HTTP helper, but does not install an i
 
 See `PATCH_NOTES.md` for CPython startup syscall compatibility, live
 fresh-exec integration testing, and consistent protected trust-policy reads.
+
+
+## v1.7 expanded bounded local reproduction (draft, not tagged)
+
+Added operator-pinned `json_resource_access_v1` and `versioned_cas_v1` alongside tenant-isolation checks, 2–5 bounded repeated trials, trusted oracle output validation, minimal-case recording, and independent fresh-sandbox replay with a second budget reservation. CI: 296/296 tests passed on Ubuntu 22.04 and 24.04. This is a local offline security-invariant harness, not proof of a real-world exploit, generalized fuzzing or a production release. See `V1_7_ACCEPTANCE.md`.
