@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "configured": false,
+  "authorized_repository": "/workspace/authorized-app",
+  "targets": {
+    "authz/tenant_check.py": {
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "callable": "can_read_tenant",
+      "contract": "strict_tenant_owner_v1",
+      "max_cases": 32
+    }
+  }
+}
