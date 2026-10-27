@@ -77,7 +77,7 @@ jobs:
 
   source_snapshot:
     name: Export tracked v1.5 branch for independent testing
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/v1.5-credential-approvals' || github.ref == 'refs/heads/feat/v1.7-bounded-reproduction')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/v1.5-credential-approvals' || github.ref == 'refs/heads/feat/v1.7-bounded-reproduction' || github.ref == 'refs/heads/feat/v1.8-findings-reporting')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
