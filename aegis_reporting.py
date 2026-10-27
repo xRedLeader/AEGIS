@@ -145,7 +145,7 @@ def projection(raw: bytes, filename: str, eid: str, run_id: str, ended: str):
 
 
 def markdown(report):
-    """All prose derived from schema-checked canonical data; no raw source text."""
+    """Derive every public-facing view from one schema-validated source."""
     findings = report["findings"]
     eid = report["engagement_id"]
     run = report["source_run_id"]
@@ -153,23 +153,150 @@ def markdown(report):
              "Source run: `" + run + "`", "", "**Assessment is limited, not a clean bill of security.**", "",
              "## Findings", "", "| Verdict | Finding | Asset |", "|---|---|---|"]
     for item in findings:
-        lines.append("| Needs validation | " + item["title"] + " | `" + item["affected_asset"] + "` |")
+        verdict = {"confirmed": "Confirmed (operator-reviewed)", "needs_validation": "Needs validation",
+                   "rejected": "Rejected"}[item["verdict"]]
+        lines.append("| " + verdict + " | " + item["title"] + " | `" + item["affected_asset"] + "` |")
     if not findings: lines.append("| — | No leads in this bounded source artifact | — |")
     lines += ["", "## Coverage and limitations", ""]
     for key in ("tested", "untested", "limitations"):
         lines.append("### " + key.capitalize())
         lines.extend("- " + x for x in report["coverage"][key]);lines.append("")
     needs = ["# Leads requiring validation", ""]
+    detail = ["# Confirmed security findings", ""]
     for item in findings:
-        needs.extend(["## " + item["id"] + ": " + item["title"], "",
-                      "- Asset: `" + item["affected_asset"] + "`",
-                      "- Evidence: `" + item["evidence_ref"] + "`",
-                      "- Blocker: " + item["blocker"],
-                      "- Next step: " + item["validation_plan"], ""])
-    if not findings: needs.append("No leads were produced by this particular source artifact; other coverage remains untested.")
-    detail = "# Confirmed security findings\n\nNo independently confirmed findings are present in this automated projection.\n"
+        if item["verdict"] == "needs_validation":
+            needs.extend(["## " + item["id"] + ": " + item["title"], "",
+                          "- Asset: `" + item["affected_asset"] + "`",
+                          "- Evidence: `" + item["evidence_ref"] + "`",
+                          "- Blocker: " + item["blocker"],
+                          "- Next step: " + item["validation_plan"], ""])
+        elif item["verdict"] == "confirmed":
+            detail.extend(["## " + item["id"] + ": " + item["title"], "",
+                           "- Asset: `" + item["affected_asset"] + "`",
+                           "- Severity: " + item["severity"],
+                           "- Source evidence: `" + item["evidence_ref"] + "`",
+                           "- Independently reviewed evidence digest: `" + item["verification_evidence_sha256"] + "`",
+                           "- Demonstrated impact (attested): " + item["demonstrated_impact"],
+                           "- Remediation: " + item["remediation"],
+                           "- Verification: " + item["verifier_id"] + " at " + item["verified_at_utc"], ""])
+    if not any(x["verdict"] == "needs_validation" for x in findings):
+        needs.append("No unresolved leads in this **limited** report; untested areas remain.")
+    if not any(x["verdict"] == "confirmed" for x in findings):
+        detail.append("No independently confirmed findings in this limited report.")
     return {"REPORT.md": "\n".join(lines) + "\n", "NEEDS-VALIDATION.md": "\n".join(needs) + "\n",
-            "FINDINGS-DETAIL.md": detail}
+            "FINDINGS-DETAIL.md": "\n".join(detail) + "\n"}
+
+
+REPORT_PARTS = ("findings.json", "REPORT.md", "NEEDS-VALIDATION.md", "FINDINGS-DETAIL.md")
+PACKAGE_FILES = frozenset((*REPORT_PARTS, "integrity.json"))
+PROOF_NAME = re.compile(r"proof-[a-f0-9]{64}\.json\Z")
+
+
+def report_package(document, proofs=None):
+    schema = json.loads((HERE / "findings-v2.schema.json").read_text())
+    if list(Draft202012Validator(schema).iter_errors(document)):
+        deny("invalid canonical findings document")
+    expected_proofs = {"proof-" + f["verification_evidence_sha256"] + ".json"
+                       for f in document["findings"] if f["verdict"] in ("confirmed", "rejected")}
+    proofs = {} if proofs is None else dict(proofs)
+    if set(proofs) != expected_proofs or len(proofs) > 12:
+        deny("reviewed report proof inventory does not match admitted decisions")
+    for filename, material in proofs.items():
+        if (not PROOF_NAME.fullmatch(filename) or not isinstance(material, bytes) or
+                not 0 < len(material) <= 8192 or
+                hashlib.sha256(material).hexdigest() != filename[6:-5]):
+            deny("retained review proof is not bounded or fingerprinted")
+    raw = canonical(document)
+    package = {"findings.json": raw, **{k: v.encode("utf-8") for k, v in markdown(document).items()}, **proofs}
+    package["integrity.json"] = canonical({"report_sha256": hashlib.sha256(raw).hexdigest(),
+        "artifacts": {k: hashlib.sha256(v).hexdigest() for k, v in package.items()}})
+    if sum(map(len, package.values())) > MAX_REPORT:
+        deny("bounded reporting package exceeded")
+    return package
+
+
+def verified_package(directory: Path, expected_sha: str, *, include_proofs=False):
+    """Verify all five private files, rendering, and manifest (not just JSON)."""
+    if not isinstance(expected_sha, str) or not re.fullmatch(r"[a-f0-9]{64}", expected_sha):
+        deny("invalid report digest")
+    data = {}
+    with open_directory_nofollow(Path(directory)) as fd:
+        private_directory(fd)
+        present = set(os.listdir(fd))
+        proof_files = present - PACKAGE_FILES
+        if (not PACKAGE_FILES.issubset(present) or len(proof_files) > 12 or
+                any(not PROOF_NAME.fullmatch(p) for p in proof_files)):
+            deny("report package contains missing or unexpected files")
+        for name in present:
+            f = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=fd)
+            try:
+                st = os.fstat(f)
+                if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid() or
+                    st.st_mode & 0o077 or st.st_nlink != 1 or not 0 < st.st_size <= MAX_REPORT):
+                    deny("report package file not private and bounded")
+                data[name] = os.read(f, st.st_size + 1)
+                after = os.fstat(f)
+                if (len(data[name]) != st.st_size or
+                    (st.st_ino, st.st_dev, st.st_size) != (after.st_ino, after.st_dev, after.st_size)):
+                    deny("report package source changed while reading")
+            finally:
+                os.close(f)
+    if sum(map(len, data.values())) > MAX_REPORT:
+        deny("report package total bytes exceeded")
+    try:
+        document = json.loads(data["findings.json"])
+        proofs = {k: v for k, v in data.items() if k not in PACKAGE_FILES}
+        expected = report_package(document, proofs)
+    except (ValueError, UnicodeError, TypeError, RecursionError) as exc:
+        raise ExecutionDenied("report package parsing failed") from exc
+    if (hashlib.sha256(data["findings.json"]).hexdigest() != expected_sha or
+        any(data[k] != expected[k] for k in PACKAGE_FILES)):
+        deny("report package integrity or derived content mismatch")
+    return (document, proofs) if include_proofs else document
+
+
+def _publish_package(directory_fd, name, contents):
+    """Atomically install an immutable directory under a trusted directory fd."""
+    if not re.fullmatch(r"[a-f0-9-]{32,64}", name):
+        deny("invalid immutable report identifier")
+    stage = ".stage-" + uuid.uuid4().hex
+    os.mkdir(stage, 0o700, dir_fd=directory_fd)
+    folder = os.open(stage, O_DIR, dir_fd=directory_fd)
+    try:
+        for filename, raw in contents.items():
+            leaf = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                           0o600, dir_fd=folder)
+            try:
+                view = memoryview(raw)
+                while view:
+                    n = os.write(leaf, view)
+                    if n <= 0:
+                        deny("short report write")
+                    view = view[n:]
+                os.fsync(leaf)
+            finally: os.close(leaf)
+        os.fsync(folder)
+    finally:os.close(folder)
+    lib = ctypes.CDLL(None, use_errno=True)
+    rename = getattr(lib, "renameat2", None)
+    if rename is None:
+        deny("atomic no-replace report promotion unsupported")
+    rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    rename.restype = ctypes.c_int
+    try:
+        if rename(directory_fd, stage.encode(), directory_fd, name.encode(), 1) != 0:
+            raise OSError(ctypes.get_errno(), "report already exists or rename failed")
+        os.fsync(directory_fd)
+    finally:
+        try:
+            stale = os.open(stage, O_DIR, dir_fd=directory_fd)
+            try:
+                for filename in contents:
+                    try: os.unlink(filename, dir_fd=stale)
+                    except FileNotFoundError: pass
+            finally:os.close(stale)
+            os.rmdir(stage, dir_fd=directory_fd)
+        except FileNotFoundError:pass
 
 
 class ReportingSupervisor(AegisSupervisor):
@@ -178,13 +305,26 @@ class ReportingSupervisor(AegisSupervisor):
         con.execute("""CREATE TABLE IF NOT EXISTS assessment_reports (
             source_run_id TEXT PRIMARY KEY, engagement_id TEXT NOT NULL,
             source_sha256 TEXT NOT NULL, report_sha256 TEXT NOT NULL,
-            report_path TEXT NOT NULL)""")
+            report_path TEXT NOT NULL, latest_sha256 TEXT)""")
+        if "latest_sha256" not in {row[1] for row in con.execute("PRAGMA table_info(assessment_reports)")}:
+            con.execute("ALTER TABLE assessment_reports ADD COLUMN latest_sha256 TEXT")
         con.execute("""CREATE TABLE IF NOT EXISTS notification_outbox (
             notice_id TEXT PRIMARY KEY, engagement_id TEXT NOT NULL,
             source_run_id TEXT NOT NULL, report_sha256 TEXT NOT NULL,
             lead_count INTEGER NOT NULL, status TEXT NOT NULL,
             attempts INTEGER NOT NULL DEFAULT 0, lease_until REAL NOT NULL DEFAULT 0,
-            last_failure TEXT, acknowledged_utc TEXT)""")
+            last_failure TEXT, acknowledged_utc TEXT,
+            lease_token TEXT, next_attempt_at REAL NOT NULL DEFAULT 0,
+            report_revision TEXT)""")
+        columns = {row[1] for row in con.execute("PRAGMA table_info(notification_outbox)")}
+        for name, decl in (("lease_token", "TEXT"), ("next_attempt_at", "REAL NOT NULL DEFAULT 0"),
+                           ("report_revision", "TEXT")):
+            if name not in columns:
+                con.execute("ALTER TABLE notification_outbox ADD COLUMN " + name + " " + decl)
+        con.execute("""CREATE TABLE IF NOT EXISTS assessment_report_revisions (
+            report_sha256 TEXT PRIMARY KEY, source_run_id TEXT NOT NULL,
+            engagement_id TEXT NOT NULL, previous_sha256 TEXT NOT NULL,
+            verification_sha256 TEXT NOT NULL, report_path TEXT NOT NULL)""")
 
     def _read_source(self, info, run_id, filename):
         with open_directory_nofollow(Path(info["report_directory"]) / "runs" / run_id) as directory:
@@ -206,56 +346,12 @@ class ReportingSupervisor(AegisSupervisor):
 
     @staticmethod
     def _write_report_dir(root, source_id, contents):
-        """Exclusive directory promotion; no write-through or symlink overwrite."""
         os.mkdir("assessments", 0o700, dir_fd=root) if not _exists_dir(root, "assessments") else None
         folder = os.open("assessments", O_DIR, dir_fd=root)
         try:
             private_directory(folder)
-            stage = ".stage-" + uuid.uuid4().hex
-            os.mkdir(stage, 0o700, dir_fd=folder)
-            temp = os.open(stage, O_DIR, dir_fd=folder)
-            try:
-                for filename, raw in contents.items():
-                    f = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-                                0o600, dir_fd=temp)
-                    try:
-                        view = memoryview(raw)
-                        while view:
-                            n = os.write(f, view)
-                            if n < 1: deny("short report artifact write")
-                            view = view[n:]
-                        os.fsync(f)
-                    finally: os.close(f)
-                os.fsync(temp)
-            finally:os.close(temp)
-            # Linux RENAME_NOREPLACE is required: ordinary rename may replace an
-            # empty existing directory. No silent overwrite of retained reports.
-            lib = ctypes.CDLL(None, use_errno=True)
-            rename = getattr(lib, "renameat2", None)
-            if rename is None:
-                deny("atomic no-replace report promotion unsupported")
-            rename.argtypes = [ctypes.c_int, ctypes.c_char_p,
-                               ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
-            rename.restype = ctypes.c_int
-            if rename(folder, stage.encode(), folder, source_id.encode(), 1) != 0:
-                number = ctypes.get_errno()
-                if number == errno.EEXIST:
-                    deny("assessment report already exists")
-                raise OSError(number, "atomic report promotion failed")
-            os.fsync(folder)
-        finally:
-            # Never leave a failed staging directory behind for a future run
-            # to mistake for a completed or operator-approved report.
-            try:
-                leftover=os.open(stage, O_DIR, dir_fd=folder)
-                try:
-                    for filename in contents:
-                        try:os.unlink(filename,dir_fd=leftover)
-                        except FileNotFoundError:pass
-                finally:os.close(leftover)
-                os.rmdir(stage,dir_fd=folder)
-            except FileNotFoundError:pass  # successfully renamed
-            finally:os.close(folder)
+            _publish_package(folder, source_id, contents)
+        finally:os.close(folder)
 
     @staticmethod
     def _match_existing(root, source_id, contents):
@@ -294,11 +390,7 @@ class ReportingSupervisor(AegisSupervisor):
         canonical_report = projection(raw, filename, eid, run_id, record[1])
         result = canonical(canonical_report)
         digest = hashlib.sha256(result).hexdigest()
-        rendered = markdown(canonical_report)
-        package = {"findings.json": result, **{k:v.encode("utf-8") for k,v in rendered.items()}}
-        package["integrity.json"] = canonical({"report_sha256": digest, "artifacts":
-             {k:hashlib.sha256(v).hexdigest() for k,v in package.items()}})
-        if sum(map(len, package.values())) > MAX_REPORT:deny("bounded report output exceeded")
+        package = report_package(canonical_report)
         self._guard()  # revocation/stop before persisting any new artifact
         dest = Path(info["report_directory"]) / "assessments" / run_id
         with self._database() as con:
@@ -321,7 +413,9 @@ class ReportingSupervisor(AegisSupervisor):
                 else:
                     self._write_report_dir(root,run_id,package)
             notice_id = hashlib.sha256(canonical([eid,run_id,digest])).hexdigest()
-            con.execute("INSERT INTO assessment_reports VALUES(?,?,?,?,?)",
+            con.execute("""INSERT INTO assessment_reports
+                (source_run_id,engagement_id,source_sha256,report_sha256,report_path)
+                VALUES(?,?,?,?,?)""",
                         (run_id,eid,canonical_report["source_evidence"]["sha256"],digest,str(dest)))
             con.execute("INSERT INTO notification_outbox(notice_id,engagement_id,source_run_id,report_sha256,lead_count,status) VALUES(?,?,?,?,?,'pending')",
                         (notice_id,eid,run_id,digest,len(canonical_report["findings"])))

@@ -92,3 +92,18 @@ jobs:
           path: /tmp/aegis-assessment-source.zip
           retention-days: 1
           if-no-files-found: error
+
+  notification_cross_uid:
+    name: v1.8 separate-UID receiver / ubuntu-24.04
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain dependencies
+        run: |
+          /usr/bin/python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Verify distinct sender and receiver OS identities
+        run: sudo -n .venv/bin/python tests/cross_uid_receiver_acceptance.py --sender-uid "$(id -u)" --sender-gid "$(id -g)"

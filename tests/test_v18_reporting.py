@@ -223,6 +223,10 @@ class NotificationTests(ReportFixture):
         self.save_policy()
         seen,done=self.listener()
         self.assertEqual(self.sender.deliver(result['notice_id'],self.policy_file)['status'],'DELIVERY_FAILED_PENDING')
+        # The endpoint inode/owner is now rejected before any connection.
+        self.assertEqual(seen, [])
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as wake:
+            wake.connect(str(self.sock))
         self.assertTrue(done.wait(3))
         self.policy['allowed_peer_uids']=[os.geteuid()]
         self.save_policy()

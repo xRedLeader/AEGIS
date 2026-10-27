@@ -1,3 +1,7 @@
+# AEGIS v1.8 — evidence-bound findings and durable local notifications (draft PR)
+
+The v1.8 development branch adds canonical, immutable version-2 security reports; dual-signed human-reviewed finding promotion bound to retained staging evidence; remediation views; a durable local Unix notification receiver; and lease-fenced, backed-off, idempotent notification dispatch. Only the existing privileged operator service controls these APIs: no model gains unrestricted code execution, network access, or credential control. See [V1_8_REPORTING.md](V1_8_REPORTING.md). The local receiver is not an external email, webhook or human inbox, and signing an assessment does not objectively prove real-world exploitability.
+
 # AEGIS v1.8 — evidence-bound reporting and local notifications (draft)
 
 The v1.8 feature branch adds a versioned canonical findings schema, safe projections of completed assessment evidence into *unverified* leads, generated Markdown and integrity manifests, a durable notification outbox and an acknowledgement-verified local Unix-socket sender. **A queued event is not a delivered notification, and a lead is not a confirmed exploit.** No external notifications or new offensive tools are enabled. See [V1_8_REPORTING.md](V1_8_REPORTING.md). This is not a tagged release.

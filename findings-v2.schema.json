@@ -8,7 +8,7 @@
     "engagement_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{7,63}$"},
     "source_run_id": {"type": "string", "format": "uuid"},
     "generated_at_utc": {"type": "string", "minLength": 10, "maxLength": 40},
-    "assessment_status": {"const": "limited_source_evidence_only"},
+    "assessment_status": {"enum": ["limited_source_evidence_only", "independently_reviewed_limited_evidence"]},
     "source_evidence": {"type": "object", "additionalProperties": false,
       "required": ["relative_path", "sha256", "kind"], "properties": {
         "relative_path": {"type": "string", "pattern": "^runs/[0-9a-f-]{36}/[a-z-]+\\.json$"},
@@ -41,17 +41,20 @@
         "rejection_reason": {"$ref": "#/$defs/line"},
         "severity": {"enum": ["critical", "high", "medium", "low", "informational"]},
         "demonstrated_impact": {"$ref": "#/$defs/line"},
-        "remediation": {"$ref": "#/$defs/line"}
+        "remediation": {"$ref": "#/$defs/line"},
+        "verification_evidence_sha256": {"$ref": "#/$defs/hash"},
+        "verifier_id": {"type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{2,63}$"},
+        "verified_at_utc": {"type": "string", "minLength": 19, "maxLength": 40}
       },
       "allOf": [
         {"if": {"properties": {"verdict": {"const": "confirmed"}}, "required": ["verdict"]},
-         "then": {"required": ["severity", "demonstrated_impact", "remediation"],
+         "then": {"required": ["severity", "demonstrated_impact", "remediation", "verification_evidence_sha256", "verifier_id", "verified_at_utc"],
                   "not": {"anyOf": [{"required": ["blocker"]}, {"required": ["validation_plan"]}, {"required": ["rejection_reason"]}]}}},
         {"if": {"properties": {"verdict": {"const": "needs_validation"}}, "required": ["verdict"]},
          "then": {"required": ["blocker", "validation_plan"],
                   "not": {"anyOf": [{"required": ["severity"]}, {"required": ["demonstrated_impact"]}, {"required": ["remediation"]}, {"required": ["rejection_reason"]}]}}},
         {"if": {"properties": {"verdict": {"const": "rejected"}}, "required": ["verdict"]},
-         "then": {"required": ["rejection_reason"],
+         "then": {"required": ["rejection_reason", "verification_evidence_sha256", "verifier_id", "verified_at_utc"],
                   "not": {"anyOf": [{"required": ["severity"]}, {"required": ["demonstrated_impact"]}, {"required": ["remediation"]}, {"required": ["blocker"]}, {"required": ["validation_plan"]}]}}}
       ]}
   }

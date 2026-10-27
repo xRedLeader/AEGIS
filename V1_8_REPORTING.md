@@ -1,49 +1,59 @@
-# AEGIS v1.8 — evidence-bound reporting and durable notifications
+# AEGIS v1.8 — evidence-bound findings, immutable reports, and durable local notifications
 
-**Feature branch, first working increment. Not a production release.** It does not grant an AI agent any additional tools, secrets, shell commands, or target-network access. The trusted operator invokes the fixed producer and dispatcher. Cloudflare audit orchestration remains scheduled for v2.1.
+**Feature branch; complete for its explicitly constrained operator-only workflow, NOT an authorization to run production tests.** Assessment workers receive no additional shell, network, credential or filesystem capabilities. The existing v1 source findings format remains supported; v1.8 introduces an explicit canonical schema v2. Cloudflare multi-agent methodology remains reserved for v2.1.
 
-## Canonical reporting
+## Canonical source report and evidence constraints
 
-`aegis_reporting.py` admits only existing **completed** source-review, bounded-local-contract or operator-attested OSV-correlation artifacts from the signed engagement's private report root. It verifies the run in SQLite, the local audit chain, filesystem ownership, file type, link count, size, source bytes and live signed authorization. Operator/target-controlled prose is not copied into findings.
+`aegis_reporting.py` reads only a completed and authorized source-review, offline-fuzz or operator-attested OSV assessment from the protected engagement report root. It verifies the ledger/audit chain and private source bytes before producing **unverified** `needs_validation` leads. Static matches, dependency advisories and isolated synthetic mismatches are not declared exploitable findings; zero leads never constitutes a clean assessment.
 
-The version-2 schema `findings-v2.schema.json` distinguishes `confirmed`, `needs_validation` and `rejected`. Only a confirmed record may contain severity, demonstrated impact or remediation. The v1.8 producer **never emits confirmed findings** from static heuristics, local synthetic mismatches or version correlation. Every resulting lead is `needs_validation`, with a specific missing fact and validation plan. An empty source report is **not** a clean security assessment. The older `findings.schema.json` remains available for legacy v1 results; it is not silently changed by this milestone.
+The canonical v2 `findings.json` is the sole source for `REPORT.md`, `NEEDS-VALIDATION.md` and `FINDINGS-DETAIL.md`. `integrity.json` binds every artifact to its exact bytes. Each private package is atomically installed as an immutable directory with no-follow/hard-link and bounded-content checks, and repeated generation is byte-identical or denied. `aegis_report_validate.py` checks v1 or v2 structure; only the reporting/notification supervisor checks the package and protected run ledger. Missing, added, altered, hard-linked, or symlinked report files fail delivery **before** consuming a delivery attempt.
 
-One validated `findings.json` is authoritative. `REPORT.md`, `NEEDS-VALIDATION.md`, and `FINDINGS-DETAIL.md` are deterministic projections, written with an `integrity.json` digest manifest. All five outputs are stored in the operator-owned `assessments/<source-run-id>/` directory, using descriptor-relative no-follow opens, exclusive private files, and Linux atomic no-replace promotion. The report generator is idempotent only when existing files are byte-identical; tampering fails closed. An interrupted after-promotion/pre-commit attempt may be recovered by retrying the same report if its exact bytes are present.
-
-```bash
-python aegis_reporting.py \
-  --manifest /etc/aegis/scope.yaml \
-  --signature /etc/aegis/scope.sig \
-  --trust /etc/aegis/trust.json \
-  --state-root /var/lib/aegis \
-  --run-id <completed-uuid> \
-  --evidence bounded-fuzz.json
+```
+python aegis_reporting.py --manifest /etc/aegis/scope.yaml --signature /etc/aegis/scope.sig \
+  --trust /etc/aegis/trust.json --state-root /var/lib/aegis \
+  --run-id <completed-run-uuid> --evidence source-review.json
 ```
 
-Permitted evidence names: `source-review.json`, `bounded-fuzz.json`, `advisory-candidates.json`. Findings are derived from the source artifact; a model cannot submit a free-form critical finding to this producer.
+## Dual-signed finding review and promotion
 
-## Notification delivery
+`aegis_finding_promotion.py` implements a narrowly scoped **manual review acceptance** step. It cannot silently turn model or scanner claims into confirmed findings. An independent verifier and a distinct operator signing key must sign the *same canonical review bytes* under separate Ed25519 domain separators. The operator-configured verification policy is disabled by default and protects the pinned public keys, allowed engagement IDs, review directory and review expiry.
 
-Generating the canonical report atomically adds one idempotency-keyed record to the existing protected SQLite `notification_outbox` and audit chain. **Queueing is not delivery.** The payload contains only the engagement ID, source run ID, canonical report SHA-256, lead count, limited assessment status, notification ID and a fresh delivery challenge. No credentials, endpoint response bodies, request headers, source snippets or issue descriptions enter the transport.
+The review identifies the completed source run, original evidence SHA-256, current report SHA-256, one **existing unresolved finding ID**, verifier/operator identities, a bounded verification proof digest and either a confirmed or rejected verdict. A `confirmed` review must include an independently attested, operator-authorized staging validation fixture describing starting access, tested conditions, observed behavior, affected principal and source reference. A local synthetic fixture **cannot** confirm deployed impact. The operator must separately inspect its factual accuracy, exploitability and severity before countersigning: signatures show who approved the record, not whether its contents are true.
 
-`aegis_notifications.py` connects to **one exact operator-configured private Unix-domain socket**, checks the socket inode and `SO_PEERCRED` UID allowlist, and requires a matching challenge-bound acknowledgement before reporting `DELIVERY_ACKNOWLEDGED`. Before delivery it validates the report's digest again. Failed connections, wrong peers, truncated/mismatching acks and timeouts report `DELIVERY_FAILED_PENDING` and retain the item for retry, or `DELIVERY_FAILED_PERMANENT` after the configured maximum attempts. Leases prevent concurrent senders from delivering the same row during the lease; an expired lease can be recovered after a crash. Delivery is **at least once**, not exactly once: receiver implementations MUST deduplicate by notification ID and report hash and persist the event before acking.
+Each accepted review creates a **new immutable report revision** under `assessments/<run-id>/revisions/<report-sha256>/`, preserving earlier versions. The proof bytes are retained inside the revision as SHA-256-named private files, included in `integrity.json`; previous reviewed proofs are copied forward. Reviewed results render factual, attributed severity/impact/remediation only for confirmed findings, no severity for rejected/unresolved findings. The protected ledger atomically records the revision, accepted decision and a separate queued notice. Stale parent versions, changed source evidence, reused findings and malformed signatures fail closed. This is an operator-only interface; it is **not** an AI agent delegation capability.
 
-```bash
-python aegis_notifications.py \
-  --manifest /etc/aegis/scope.yaml \
-  --signature /etc/aegis/scope.sig \
-  --trust /etc/aegis/trust.json \
-  --state-root /var/lib/aegis \
-  --notification-policy /etc/aegis/notification-policy.json \
-  --notice-id <64-char-notice-id>
+```
+python aegis_finding_promotion.py --manifest /etc/aegis/scope.yaml \
+  --signature /etc/aegis/scope.sig --trust /etc/aegis/trust.json \
+  --state-root /var/lib/aegis --run-id <completed-run-uuid> \
+  --review-policy /etc/aegis/review-policy.json --review-name review-001.json
 ```
 
-The sample `notification-policy.example.json` is disabled and cannot send anything. The configured receiver is a **separate operator service** and must durably store or forward the notice before acknowledging. The v1.8 package implements a bounded local sender, not SMTP, Internet webhooks, a managed inbox, or a remote receiver. No notification of a failed or unexecuted assessment is asserted unless a canonical completed source report was generated. Revocation can prevent reporting and sending; a recipient that acknowledged a notice before cancellation may already retain it.
+Prepare an independently reviewed canonical `review-001.json`, detached raw Ed25519 signatures `review-001.json.verifier.sig` and `.operator.sig`, and a bounded `review-001.json.proof` fixture in the service-protected review directory. The corresponding private keys must remain outside the supervisor and AI tools. Sample `review-policy.example.json` is disabled and must never be enabled unchanged.
 
-## Security and acceptance
+## Durable receipt and notification dispatch
 
-- The new code executes solely in the **trusted operator control plane** and does not open host TCP/IP sockets or change AEGIS's kernel/seccomp confinement for assessment workers.
-- The operator must protect signing keys, trust/revocation policy, report root, SQLite ledger, notification policy, socket directory and recipient UID. Untrusted assessment code and model tools must not have direct access to these files or processes.
-- Test on both Ubuntu 22.04/Python 3.10 and Ubuntu 24.04/Python 3.12: full inherited test suite, 14-point source sandbox probe, authenticated egress probes, new negative reports and real Unix-socket acknowledgement/retry tests. No skipped security tests count as passes.
-- Re-run on the actual deployment host with its AppArmor, Unix UID, directory permissions and notification recipient. **A green CI matrix does not establish production approval.**
-- The next v1.8 increment should add an operator-installed durable notification receiver or vetted email/webhook adapter, independent delivery confirmation, and a reviewed promotion path for independently confirmed findings. Until then this is a bounded local reporting/notification capability, not a complete organization-wide alerting system.
+`aegis_notifications.py` stores an at-least-once delivery outbox in the existing protected SQLite ledger. A notification includes only metadata: engagement and source run, report SHA-256, lead count, assessment status, notice ID and random challenge. No source text, proof, secret, HTTP response or raw finding is sent. The sender verifies **all five canonical report files and any retained proof artifacts**, their byte digests, schema, and deterministic Markdown views before claiming a delivery attempt. It requires a matching challenge- and digest-bound acknowledgement from a positively configured Unix socket peer whose OS UID is explicitly permitted.
+
+Every attempt owns a random, persisted **lease token**, attempt number and lease deadline. A previous sender cannot finalize a recovered lease; expired final attempts become permanent failures. Failed attempts are recorded, backed off exponentially for automatic draining, and retained for explicit operator triage. The dispatcher supports a bounded `--drain 20` one-shot pass suitable for an operator-owned systemd timer (no unrestricted background agent or external network). A manual `--notice-id` can be retried before the configured maximum attempts. `--drain` does not create new assessments or automatically issue privileges.
+
+```
+python aegis_notifications.py --manifest /etc/aegis/scope.yaml \
+  --signature /etc/aegis/scope.sig --trust /etc/aegis/trust.json \
+  --state-root /var/lib/aegis \
+  --notification-policy /etc/aegis/notification-policy.json --drain 20
+```
+
+`aegis_notification_receiver.py` is a **separate durable local receiver**, with a private SQLite ledger under its own non-root OS identity. It parses an exact bounded canonical protocol, checks Linux `SO_PEERCRED` sender UID and allowed engagement IDs, rejects altered/conflicting replays, commits metadata with SQLite `synchronous=FULL`, and **only then acknowledges**. Retries of an identical notice/digest survive service restart without duplicate rows. This is a local durable receipt, not proof of delivery to an off-host human inbox.
+
+```
+python aegis_notification_receiver.py --policy /etc/aegis/receiver-policy.json
+```
+
+For a real separate-UID installation, provision a receiver-owned socket directory with mode `0710` and a specific group shared with the sender; the receiver creates a mode-`0660` socket. The sender verifies the allowed receiver UID and socket inode; the receiver verifies the allowed sender UID. State and verification policy remain mode `0700`/`0600` and inaccessible to the sender or assessment worker. Same-UID `0700`/`0600` is useful for local tests but is **not** an acceptable production separation. Sample `receiver-policy.example.json` is disabled.
+
+## Acceptance, limitations and release gates
+
+The source and kernel test matrix includes signature/role/review tampering, proof retention, new report revision, current-source pinning, full report integrity, cross-UID sender/receiver (separate CI job), revoked operator policies, concurrent delivery lease fencing, crash-before-ack recovery, restarts, missing sockets and permanent failed-attempt triage. Acceptance requires **zero skipped tests** on supported Ubuntu 22.04 and 24.04, passing AppArmor/namespace/seccomp probes, and independent review of the final commit and deployment credentials/UIDs. The production host must supply its own protected review keys, staging fixtures and notification policy; successful test fixtures do not constitute production approval.
+
+**Out of scope:** externally authenticated SMTP/Teams/Slack/webhooks, inbox delivery receipts, automatic exploit confirmation, internet connectivity for assessment workers, general remote exploitation and v1.9 autonomous planning. Human/external notification transports can be a later increment; this milestone's accepted delivery boundary is the durable, identity-verified local receiver. A confirmed review remains an **operator-attested staging verification**, not an objective proof of impact on production systems.

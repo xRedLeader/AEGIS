@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "configured": false,
+  "review_dir": "/etc/aegis/reviews",
+  "verifier_public_key_path": "/etc/aegis/keys/independent-verifier.pub",
+  "operator_public_key_path": "/etc/aegis/keys/review-operator.pub",
+  "max_age_seconds": 1800,
+  "allowed_engagement_ids": []
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "configured": false,
+  "socket_path": "/run/aegis-notifications/receiver.sock",
+  "state_root": "/var/lib/aegis-receiver",
+  "shared_gid": null,
+  "allowed_sender_uids": [],
+  "allowed_engagement_ids": []
+}
