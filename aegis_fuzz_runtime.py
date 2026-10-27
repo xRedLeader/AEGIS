@@ -217,7 +217,8 @@ class AegisFuzzSupervisor(AegisSupervisor):
         return result
 
     def execute(self, repository: Path, module: str, *, seed: int, max_cases: int,
-                seconds: int = 15, mode: str = "fuzz", case_index: int | None = None) -> dict:
+                seconds: int = 15, mode: str = "fuzz", case_index: int | None = None,
+                trials: int = 3) -> dict:
         if sys.platform != "linux" or os.geteuid() == 0:
             deny("bounded runtime validation requires non-root Linux")
         info, manifest = self._guard()
@@ -234,10 +235,20 @@ class AegisFuzzSupervisor(AegisSupervisor):
             deny("case count exceeds operator-authorized bound")
         if type(seconds) is not int or not 2 <= seconds <= 30:
             deny("local test duration exceeds fixed worker ceiling")
+        if type(trials) is not int or not 2 <= trials <= 5:
+            deny("local trial budget exceeds fixed worker ceiling")
+        if (plan_contract := item["contract"]) == CONTRACT and trials != 3:
+            deny("legacy contract does not accept changed trial semantics")
+        if trials > item.get("max_trials", 5):
+            deny("local trial count exceeds operator ceiling")
+        if item["contract"] != CONTRACT and max_cases * trials > 192:
+            deny("bounded synthetic invocation budget exceeded")
         plan = {"contract": item["contract"], "module": module,
                 "callable": item["callable"], "source_sha256": item["sha256"],
                 "seed": seed, "max_cases": max_cases, "mode": mode,
                 "case_index": case_index}
+        if item["contract"] != CONTRACT:
+            plan["trials"] = trials
         try:
             validate_plan(plan)
         except HarnessDenied as exc:
@@ -271,6 +282,24 @@ class AegisFuzzSupervisor(AegisSupervisor):
                 except (TransportError, OSError, ValueError, subprocess.SubprocessError) as exc:
                     raise ExecutionDenied("isolated bounded test failed or was denied") from exc
                 self._check_result(result, plan)
+                guard()
+                if result["candidates"]:
+                    # A small, source-pinned, parent-selected reproduction recipe.
+                    # This is derived from validated synthetic observations, not
+                    # from arbitrary target-supplied reproduction instructions.
+                    def rank(candidate):
+                        sample = (candidate.get("synthetic_input") if
+                                  "synthetic_input" in candidate else
+                                  [candidate["synthetic_actor"], candidate["synthetic_owner"]])
+                        return (len(canonical(sample)), candidate["case_index"])
+                    smallest = min(result["candidates"], key=rank)
+                    result["minimal_reproducer"] = {
+                        "case_index": smallest["case_index"],
+                        "seed": plan["seed"], "max_cases": plan["max_cases"],
+                        "contract": plan["contract"],
+                        "source_sha256": plan["source_sha256"],
+                        "replay_requires_fresh_sandbox": True,
+                    }
                 guard()
                 raw = json.dumps(result, sort_keys=True, separators=(",", ":"),
                                  ensure_ascii=True).encode("ascii")
@@ -313,12 +342,19 @@ def main(argv=None):
     ap.add_argument("--cases", type=int, default=24)
     ap.add_argument("--seconds", type=int, default=15)
     ap.add_argument("--replay-case", type=int)
+    ap.add_argument("--verify-run")
+    ap.add_argument("--trials", type=int, default=3)
     a = ap.parse_args(argv)
     try:
         sup = AegisFuzzSupervisor(a.manifest, a.signature, a.trust, a.state_root, a.fuzz_policy)
-        output = sup.execute(Path(a.repo), a.module, seed=a.seed, max_cases=a.cases,
-                             seconds=a.seconds, mode="replay" if a.replay_case is not None else "fuzz",
-                             case_index=a.replay_case)
+        if a.verify_run is not None:
+            if a.replay_case is not None:
+                deny("verify-run and replay-case are mutually exclusive")
+            output = sup.verify_evidence(Path(a.repo), a.module, a.verify_run, seconds=a.seconds)
+        else:
+            output = sup.execute(Path(a.repo), a.module, seed=a.seed, max_cases=a.cases,
+                                 seconds=a.seconds, mode="replay" if a.replay_case is not None else "fuzz",
+                                 case_index=a.replay_case, trials=a.trials)
         print(json.dumps(output, sort_keys=True, separators=(",", ":")))
         return 0
     except (ExecutionDenied, TransportError, OSError, ValueError, TypeError):
