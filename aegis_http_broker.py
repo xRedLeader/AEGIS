@@ -2,6 +2,7 @@
 """Trusted connection broker and watchdog, never an agent-facing tool."""
 from __future__ import annotations
 import ctypes
+import fcntl
 import hashlib
 import ipaddress
 import json
@@ -145,9 +146,16 @@ def fetch(request, credential_fd=None):
     if credential_fd is not None:
         try:
             st = os.fstat(credential_fd)
+            required_seals = (fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW |
+                              fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL)
+            try:
+                present_seals = fcntl.fcntl(credential_fd, fcntl.F_GET_SEALS)
+            except OSError as exc:
+                raise TransportError("credential descriptor must be a sealed snapshot") from exc
             if (credential_fd < 3 or request["scheme"] != "https" or
-                    not stat.S_ISREG(st.st_mode) or st.st_mode & 0o077 or
-                    st.st_uid not in (0, os.geteuid()) or st.st_size > 4096):
+                    not stat.S_ISREG(st.st_mode) or
+                    st.st_uid not in (0, os.geteuid()) or st.st_size > 4096 or
+                    present_seals & required_seals != required_seals):
                 raise TransportError("invalid protected credential descriptor")
             token = os.read(credential_fd, 4097).decode("ascii")
             if not re.fullmatch(r"[A-Za-z0-9._~+/-]{8,2048}", token):
