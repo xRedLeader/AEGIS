@@ -301,7 +301,9 @@ class AegisSupervisor:
             try:
                 self._guard()
                 jail = Path(tempfile.mkdtemp(prefix="sandbox-", dir=self.state_root))
-                worker = subprocess.Popen(self._worker_command(repo_fd, jail, mode),
+                worker_cmd = (self._worker_command(repo_fd, jail) if mode == "scan"
+                              else self._worker_command(repo_fd, jail, mode))
+                worker = subprocess.Popen(worker_cmd,
                                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                           stderr=subprocess.PIPE, cwd="/", start_new_session=True,
                                           env={"PATH": "/usr/bin:/bin", "PYTHONNOUSERSITE": "1",
