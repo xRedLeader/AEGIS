@@ -49,6 +49,8 @@ PROBE_HOST = Path(__file__).resolve().with_name('aegis_isolation_probe.py')
 HTTP_HOST = Path(__file__).resolve().with_name('aegis_http_gateway.py')
 AUTH_HTTP_HOST = Path(__file__).resolve().with_name('aegis_auth_helper.py')
 HTTP_PROBE_HOST = Path(__file__).resolve().with_name('aegis_egress_probe.py')
+FUZZ_HOST = Path(__file__).resolve().with_name('aegis_bounded_fuzz_worker.py')
+CONTRACTS_HOST = Path(__file__).resolve().with_name('aegis_local_contracts.py')
 
 class SandboxFailure(RuntimeError):
     pass
@@ -245,7 +247,7 @@ def _setup(args):
             sock.detach()
     elif repo_fd is None or repo_fd < 3 or not stat.S_ISDIR(os.fstat(repo_fd).st_mode):
         raise SandboxFailure('authorized repository descriptor invalid')
-    worker_source = {'scan': WORKER_HOST, 'deps': DEPS_HOST, 'probe': PROBE_HOST,
+    worker_source = {'scan': WORKER_HOST, 'deps': DEPS_HOST, 'fuzz': FUZZ_HOST, 'probe': PROBE_HOST,
                      'http': HTTP_HOST, 'http-probe': HTTP_PROBE_HOST,
                      'auth-http': AUTH_HTTP_HOST}[args.mode]
     for p in (jail, worker_source):
@@ -280,6 +282,9 @@ def _setup(args):
     _bind_readonly(worker_source, jail / 'app' / 'worker.py', is_file=True)
     if args.mode == 'auth-http':
         _bind_readonly(HTTP_HOST, jail / 'app' / 'aegis_http_gateway.py', is_file=True)
+    if args.mode == 'fuzz':
+        # Trusted fixed oracle library only, never material from the assessed repo.
+        _bind_readonly(CONTRACTS_HOST, jail / 'app' / 'aegis_local_contracts.py', is_file=True)
     # A directory fd from before chroot would provide an escape via openat.
     keep = {0, 1, 2} | ({args.socket_fd} if network else set())
     for fd in (int(name) for name in os.listdir('/proc/self/fd')):
@@ -317,7 +322,7 @@ def main(argv=None):
     ap.add_argument('--repo-fd', type=int)
     ap.add_argument('--socket-fd', type=int)
     ap.add_argument('--jail', required=True)
-    ap.add_argument('--mode', choices=('scan', 'deps', 'probe', 'http', 'http-probe', 'auth-http'), default='scan')
+    ap.add_argument('--mode', choices=('scan', 'deps', 'fuzz', 'probe', 'http', 'http-probe', 'auth-http'), default='scan')
     ap.add_argument('--host-uid', type=int, required=True)
     ap.add_argument('--parent-namespaces', required=True)
     args = ap.parse_args(argv)

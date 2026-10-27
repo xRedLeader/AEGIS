@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "configured": false,
+  "authorized_repository": "/workspace/authorized-app",
+  "targets": {
+    "authz/tenant_check.py": {
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "callable": "can_read_tenant",
+      "contract": "strict_tenant_owner_v1",
+      "max_cases": 32,
+      "max_trials": 3
+    },
+    "api/json_authorize.py": {
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "callable": "access",
+      "contract": "json_resource_access_v1",
+      "max_cases": 32,
+      "max_trials": 3
+    },
+    "state/versioned_update.py": {
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "callable": "update",
+      "contract": "versioned_cas_v1",
+      "max_cases": 32,
+      "max_trials": 3
+    }
+  }
+}

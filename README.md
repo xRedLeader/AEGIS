@@ -1,3 +1,7 @@
+# AEGIS v1.7 — bounded local reproduction (development, stacked PR)
+
+This stacked branch now supports three fixed, operator-pinned, network-denied Python contracts: exact tenant ownership, strict JSON resource authorization, and versioned compare-and-swap state transitions. The parent validates synthetic evidence, runs bounded repeats and can independently replay a minimal mismatch in a new kernel-isolated process with a new budget reservation. This is local security-invariant validation, not a general-purpose pentest engine or proof of deployed exploitation. See [V1_7_LOCAL_REPRODUCTION.md](V1_7_LOCAL_REPRODUCTION.md). The Cloudflare methodology integration remains reserved for **v2.1**, as planned in [V2_1_CLOUDFLARE_AUDIT_PLAN.md](V2_1_CLOUDFLARE_AUDIT_PLAN.md). Neither is a tagged release.
+
 # AEGIS v1.4.1 — Kernel-Enforced Network Containment
 
 This stacked **v1.6 development branch** adds fixed offline dependency inventory, operator-attested OSV exact-version correlation and non-executing security scanner report parsers. Read [V1_6_SECURITY_INTELLIGENCE.md](V1_6_SECURITY_INTELLIGENCE.md). The previously released version remains v1.4.1; this is not a v1.6 release or an autonomous scanner.

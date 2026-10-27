@@ -50,3 +50,8 @@ The workflow exercises fresh interpreter startup, real namespaces, raw socket de
 - Verify `SHA256SUMS.txt`; exclude test logs, caches, virtual environments, temporary policies and databases from commits.
 - Preserve historical commits and tags, including the October 25, 2026 v1.0 date.
 - Review the feature pull request; do not tag an unverified release.
+
+
+## v1.7 bounded local reproduction acceptance (draft stacked PR)
+
+The first v1.7 increment was expanded to three operator-pinned Python contracts, a repeated-trial bound and independent fresh-sandbox verification of a minimal mismatch. The exact GitHub feature branch passes **296/296 tests on Ubuntu 22.04 and 296/296 on Ubuntu 24.04**, with no skipped tests, in [run 40579625681](https://github.com/xRedLeader/AEGIS/actions/runs/40579625681). Non-root local source-specific tests: 30/30 passed; the inherited full local suite was incomplete on the development host and is not counted as a local success. Final PR-head CI and deployment-host operator authorization checks still apply. See `V1_7_ACCEPTANCE.md` for exact limitations.
