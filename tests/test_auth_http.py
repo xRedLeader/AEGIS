@@ -78,10 +78,20 @@ class AuthTransportTests(unittest.TestCase):
             'body_limit':2048,
             'ca_bundle':{'path':str(self.pem), 'sha256':__import__('hashlib').sha256(self.pem.read_bytes()).hexdigest()}}
 
+    def sealed_token_fd(self):
+        import fcntl
+        fd = os.memfd_create('aegis-test-snapshot', os.MFD_ALLOW_SEALING | os.MFD_CLOEXEC)
+        token = self.token.read_bytes()
+        os.write(fd, token)
+        fcntl.fcntl(fd, fcntl.F_ADD_SEALS,
+            fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL)
+        os.lseek(fd, 0, os.SEEK_SET)
+        return fd
+
     def fetch(self, req=None):
-        # The broker consumes and closes the protected descriptor before sandboxing.
+        # The broker consumes and closes a sealed token snapshot, never the vault.
         return transport.fetch(dict(self.req if req is None else req, mode='fetch'),
-                               os.open(self.token, os.O_RDONLY))
+                               self.sealed_token_fd())
 
     def test_genuine_tls_request_and_no_secret_in_result(self):
         result = self.fetch()
@@ -92,7 +102,7 @@ class AuthTransportTests(unittest.TestCase):
         self.assertEqual(set(result), {'status', 'http_status', 'body_bytes', 'redirect_not_followed'})
 
     def test_fresh_broker_confines_helper_with_inherited_fd(self):
-        fd = os.open(self.token, os.O_RDONLY)
+        fd = self.sealed_token_fd()
         try:
             process = subprocess.run([sys.executable, '-I', '-S', str(Path(__file__).parents[1] / 'aegis_http_broker.py'),
                 str(os.getpid()), '--credential-fd', str(fd)],
@@ -171,9 +181,13 @@ class AuthenticatedSupervisorIntegration(unittest.TestCase):
             'path': str(self.transport_fx.pem),
             'sha256': hashlib.sha256(self.transport_fx.pem.read_bytes()).hexdigest()}
         fx.save()
+        self.credential_fx.policy['credential_profiles']['vault://aegis/example/ordinary']['allowed_origins'] = [self.origin]
+        self.credential_fx.policy_write()
         self.credential_fx.approve({'origin': self.origin})
         self.secret_value = self.transport_fx.token.read_text()
         self.credential_fx.secret.write_text(self.secret_value)
+        self.credential_fx.policy['credential_profiles']['vault://aegis/example/ordinary']['fingerprint_sha256'] = __import__('hashlib').sha256(self.credential_fx.secret.read_bytes()).hexdigest()
+        self.credential_fx.policy_write()
         self.token = self.credential_fx.create()['handle']
         self.broker = self.credential_fx.broker()
         # All resolution still goes through signed CIDR checks; synthetic DNS
