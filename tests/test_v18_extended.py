@@ -104,6 +104,21 @@ class AdvancedNotificationTests(ReportFixture):
         with self.assertRaises(ExecutionDenied):self.sender.drain(self.policy_file,51)
 
 
+class TrustRotationRegressionTests(ReportFixture):
+    def test_partial_trust_policy_is_fail_closed_not_uncaught_parser_error(self):
+        from aegis_http_runtime import AegisHttpSupervisor
+        from aegis_preflight import PreflightError
+        sup=AegisHttpSupervisor(self.fx.fx.manifest_path,self.fx.fx.sig_path,
+                                self.fx.fx.trust_path,self.fx.state)
+        info,_=sup._guard()
+        with patch('aegis_http_runtime.read_protected_trust',
+                   side_effect=PreflightError('transient partially written JSON')):
+            with self.assertRaisesRegex(ExecutionDenied,'operator trust policy'):
+                sup._operator_route_guard({'origin':'https://example.org','target':'/secure'})
+            with self.assertRaisesRegex(ExecutionDenied,'operator trust policy'):
+                sup._operator_tls_ca(info)
+
+
 class ReceiverTests(ReportFixture):
     def setUp(self):
         super().setUp()

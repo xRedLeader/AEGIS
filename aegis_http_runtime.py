@@ -24,7 +24,7 @@ import time
 import uuid
 
 from aegis_audit import AuditError, verify_rows
-from aegis_preflight import read_protected_trust
+from aegis_preflight import read_protected_trust, PreflightError
 from aegis_http_policy import HttpPolicyDenied, inspect_url, pinned_address
 from aegis_supervisor import AegisSupervisor, ExecutionDenied, HERE, deny, preexec_limits
 
@@ -182,13 +182,20 @@ class AegisHttpSupervisor(AegisSupervisor):
             deny("invalid DNS resolver response")
         return addresses
 
+    def _active_operator_trust(self):
+        """Fail closed under concurrently rotated/partially written trust files."""
+        try:
+            return read_protected_trust(self.trust_path)
+        except PreflightError as exc:
+            raise ExecutionDenied("independent operator trust policy invalid or unavailable") from exc
+
     def _operator_route_guard(self, plan: dict):
         """Independent, default-deny operator route gate (not just host allowlist).
 
         A prefix of '/' authorizes all paths at that origin: use only for
         explicitly disposable staging. GET cannot guarantee a state-free route.
         """
-        trust = read_protected_trust(self.trust_path)
+        trust = self._active_operator_trust()
         by_origin = trust.get("allowed_http_path_prefixes", {})
         if not isinstance(by_origin, dict):
             deny("invalid operator HTTP route policy")
@@ -217,7 +224,7 @@ class AegisHttpSupervisor(AegisSupervisor):
         CA is never accepted from agent input. Both parent and helper verify
         fingerprint; helper pins its exact bytes in SSL context before TLS.
         """
-        trust = read_protected_trust(self.trust_path)
+        trust = self._active_operator_trust()
         spec = trust.get("tls_custom_ca")
         if spec is None:
             return None
