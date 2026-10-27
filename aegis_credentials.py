@@ -332,24 +332,34 @@ class AegisCredentialAuthority(AegisHttpSupervisor):
         return {"status": "SESSION_REVOKED"}
 
     def _open_secret_fd(self, handle, plan):
-        """Return pinned protected FD only to trusted control-plane code."""
-        info, manifest = self._guard()
+        """Return a one-request, sealed memfd; never pass the mutable vault fd.
+
+        No filesystem descriptor or vault path reaches the broker or worker.
+        Linux kernel seals make the snapshot immutable until all references close.
+        """
+        info, _ = self._guard()
         policy, _ = self._authority(info)
         session = self._check_session(handle, plan, allow_exhausted=True)
-        path = Path(policy["credential_paths"][session["secret_ref"]])
+        profile = policy["credential_profiles"][session["secret_ref"]]
+        if plan["origin"] not in profile["allowed_origins"]:
+            deny("credential profile does not permit this origin")
+        token = _protected_bytes(Path(policy["credential_paths"][session["secret_ref"]]),
+                                 4096, private=True)
+        if (not TOKEN_RE.fullmatch(token.decode("ascii", errors="replace")) or
+                hashlib.sha256(token).hexdigest() != profile["fingerprint_sha256"]):
+            deny("credential fingerprint mismatch or invalid token")
+        if not hasattr(os, "memfd_create"):
+            deny("sealed anonymous credential descriptors require Linux memfd support")
+        fd = os.memfd_create("aegis-credential-snapshot",
+                os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
         try:
-            with open_directory_nofollow(path.parent) as dirfd:
-                fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dirfd)
-        except OSError as exc:
-            raise ExecutionDenied("protected credential unavailable") from exc
-        try:
-            meta = os.fstat(fd)
-            if (not stat.S_ISREG(meta.st_mode) or meta.st_uid not in (0, os.geteuid()) or
-                    meta.st_mode & 0o077 or meta.st_size > 4096):
-                deny("protected credential is invalid")
-            content = os.read(fd, 4097)
-            if not TOKEN_RE.fullmatch(content.decode("ascii", errors="replace")):
-                deny("credential vault entry invalid")
+            if os.write(fd, token) != len(token):
+                deny("incomplete credential snapshot")
+            seals = (fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW |
+                     fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL)
+            fcntl.fcntl(fd, fcntl.F_ADD_SEALS, seals)
+            if fcntl.fcntl(fd, fcntl.F_GET_SEALS) & seals != seals:
+                deny("credential snapshot could not be sealed")
             os.lseek(fd, 0, os.SEEK_SET)
             return fd
         except BaseException:
