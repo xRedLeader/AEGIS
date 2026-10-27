@@ -19,6 +19,7 @@ import tempfile
 import time
 
 from aegis_bounded_fuzz_worker import validate_plan, cases, expected, HarnessDenied
+from aegis_local_contracts import fixtures, oracle, safe_observation, case_digest, canonical, CONTRACTS
 from aegis_http_broker import bounded_exchange, TransportError
 from aegis_supervisor import (
     AegisSupervisor, ExecutionDenied, deny, open_directory_nofollow,
@@ -76,8 +77,12 @@ def load_operator_policy(path: Path, repo: Path, state: Path) -> dict:
         deny("operator fuzz policy is not enabled for this exact repository")
     for path_name, item in obj["targets"].items():
         if (not isinstance(item, dict) or
-                set(item) != {"sha256", "callable", "contract", "max_cases"}):
+                set(item) not in ({"sha256", "callable", "contract", "max_cases"},
+                                  {"sha256", "callable", "contract", "max_cases", "max_trials"})):
             deny("operator fuzz target entry missing fields")
+        if ("max_trials" in item and
+                (type(item["max_trials"]) is not int or not 2 <= item["max_trials"] <= 5)):
+            deny("operator local trial bound invalid")
         try:
             validate_plan({"module": path_name, "callable": item["callable"],
                            "source_sha256": item["sha256"], "contract": item["contract"],
@@ -95,6 +100,8 @@ class AegisFuzzSupervisor(AegisSupervisor):
 
     def _check_result(self, result, plan):
         """All child output is untrusted; allow only bounded fixed-form evidence."""
+        if plan["contract"] != CONTRACT:
+            return self._check_extended_result(result, plan)
         keys = {"status", "contract", "source_sha256", "mode", "seed",
                 "cases_requested", "cases_executed", "mismatches",
                 "non_boolean_or_exception", "unstable_repetitions", "candidates", "summary"}
@@ -143,6 +150,70 @@ class AegisFuzzSupervisor(AegisSupervisor):
         if result["mismatches"] < len(result["candidates"]) or (
                 result["mismatches"] + result["non_boolean_or_exception"] > requested):
             deny("inconsistent synthetic test accounting")
+        return result
+
+    def _check_extended_result(self, result, plan):
+        """Independently check every synthetic datum and local oracle in worker output."""
+        required = {"status", "contract", "source_sha256", "mode", "seed", "case_digest",
+                    "trials_per_case", "cases_requested", "cases_executed", "mismatches",
+                    "non_boolean_or_exception", "unstable_repetitions", "candidates", "summary"}
+        wanted = 1 if plan["mode"] == "replay" else plan["max_cases"]
+        schedule = fixtures(plan["contract"], plan["seed"], plan["max_cases"])
+        if (not isinstance(result, dict) or set(result) != required or
+                result["status"] != "BOUNDED_OFFLINE_AUTHORIZATION_REPRODUCTION_ONLY" or
+                result["contract"] != plan["contract"] or
+                result["source_sha256"] != plan["source_sha256"] or
+                result["mode"] != plan["mode"] or result["seed"] != plan["seed"] or
+                result["case_digest"] != case_digest(schedule) or
+                type(result["trials_per_case"]) is not int or
+                result["trials_per_case"] != plan.get("trials", 3) or
+                any(type(result.get(k)) is not int or not 0 <= result[k] <= wanted
+                    for k in ("cases_requested", "cases_executed", "mismatches",
+                              "non_boolean_or_exception", "unstable_repetitions")) or
+                result["cases_requested"] != wanted or result["cases_executed"] != wanted or
+                result["mismatches"] + result["non_boolean_or_exception"] > wanted or
+                result["unstable_repetitions"] > result["mismatches"] or
+                not isinstance(result["candidates"], list) or len(result["candidates"]) > 5 or
+                not isinstance(result["summary"], dict) or
+                set(result["summary"]) != {"synthetic_cases", "repeated_mismatches",
+                                           "deployment_impact", "finding_status"} or
+                result["summary"]["synthetic_cases"] != wanted or
+                result["summary"]["deployment_impact"] != "NOT_ESTABLISHED" or
+                result["summary"]["finding_status"] != "needs_validation" or
+                type(result["summary"]["repeated_mismatches"]) is not int):
+            deny("invalid offline contract result envelope")
+        seen = set()
+        for item in result["candidates"]:
+            if (not isinstance(item, dict) or set(item) != {"case_index", "synthetic_input",
+                    "expected", "observed", "repeated_same_result", "classification"} or
+                    type(item["case_index"]) is not int or
+                    not 0 <= item["case_index"] < plan["max_cases"] or
+                    item["case_index"] in seen or
+                    (plan["mode"] == "replay" and item["case_index"] != plan["case_index"])):
+                deny("invalid local contract case identity")
+            idx = item["case_index"]
+            seen.add(idx)
+            reference = schedule[idx]
+            expected_value = oracle(plan["contract"], reference)
+            if (canonical(item["synthetic_input"]) != canonical(reference) or
+                    canonical(item["expected"]) != canonical(expected_value) or
+                    not safe_observation(plan["contract"], item["observed"]) or
+                    type(item["repeated_same_result"]) is not bool or
+                    item["classification"] not in
+                       ("local_contract_mismatch_needs_validation",
+                        "local_nondeterministic_case_needs_validation")):
+                deny("untrusted local contract candidate")
+            matches_oracle = canonical(item["observed"]) == canonical(expected_value)
+            if (item["repeated_same_result"] and (matches_oracle or
+                    item["classification"] != "local_contract_mismatch_needs_validation")):
+                deny("untrusted stable contract candidate")
+            if (not item["repeated_same_result"] and
+                    item["classification"] != "local_nondeterministic_case_needs_validation"):
+                deny("untrusted unstable contract candidate")
+        if (result["mismatches"] < len(result["candidates"]) or
+                result["summary"]["repeated_mismatches"] != sum(
+                    item["repeated_same_result"] for item in result["candidates"])):
+            deny("inconsistent local contract candidate accounting")
         return result
 
     def execute(self, repository: Path, module: str, *, seed: int, max_cases: int,
