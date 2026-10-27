@@ -177,7 +177,7 @@ class AegisSupervisor:
 
     def reserve(self, seconds: int, method: str = "source_review") -> tuple[dict, dict, str]:
         info, m = self._guard()
-        if method not in ("source_review", "dependency_analysis") or method not in info["approved_methods"]:
+        if method not in ("source_review", "dependency_analysis", "bounded_fuzzing") or method not in info["approved_methods"]:
             deny(method + " is not authorized")
         if type(seconds) is not int or seconds < 1 or seconds > m["limits"]["max_single_run_minutes"] * 60:
             deny("requested run duration exceeds signed single-run limit")
@@ -221,7 +221,7 @@ class AegisSupervisor:
             con.commit()
 
     def _worker_command(self, repo_fd: int, jail: Path, mode: str = "scan") -> list[str]:
-        if mode not in ("scan", "deps"):
+        if mode not in ("scan", "deps", "fuzz"):
             deny("fixed source worker mode denied")
         # Fixed, trusted scan entrypoint: never passes a model-supplied command.
         # No insecure fallback if user namespaces / seccomp are unavailable.
@@ -247,7 +247,7 @@ class AegisSupervisor:
 
     def _write_report(self, info: dict, run_id: str, payload: bytes,
                       filename: str = "source-review.json") -> str:
-        if filename not in {"source-review.json", "http-result.json", "dependency-inventory.json"}:
+        if filename not in {"source-review.json", "http-result.json", "dependency-inventory.json", "bounded-fuzz.json"}:
             deny("unsupported evidence artifact filename")
         if len(payload) > MAX_RESULT_BYTES:
             deny("worker evidence exceeds reserved byte budget")
