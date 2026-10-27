@@ -1,6 +1,8 @@
 # AEGIS v1.4.1 — Kernel-Enforced Network Containment
 
-AEGIS is a provider-independent, authorization-scoped assessment runner. It currently provides a fixed read-only source reviewer and uncredentialed HTTP/HTTPS GET/HEAD metadata testing. It is not yet the autonomous v2.0 system in the roadmap.
+AEGIS is a provider-independent, authorization-scoped assessment runner. The released v1.4.1 provides a fixed read-only source reviewer and uncredentialed HTTP/HTTPS GET/HEAD metadata testing. It is not yet the autonomous v2.0 system in the roadmap.
+
+This v1.5 development branch also contains an operator-approved credential-session prototype with kernel-confined HTTPS transport. See [V1_5_IMPLEMENTATION_STATUS.md](V1_5_IMPLEMENTATION_STATUS.md) for its tests and remaining release gates. It remains draft; do not provision production credentials.
 
 The HTTP worker now runs inside private Linux user, mount, network and PID namespaces with default-deny seccomp. A trusted broker gives it **one already-connected TCP socket** to the verified numeric IP and port. The kernel denies new sockets, reconnects, UDP, Unix sockets, netlink and namespace changes. The worker cannot broaden its endpoint permission by modifying Python code or policy files.
 
@@ -71,3 +73,21 @@ A compromised assessment worker cannot choose another endpoint, but may send arb
 No guarantee covers a compromised trusted host, kernel, supervisor/broker, policy or signing key. Remove independent shell/network tools from the agent.
 
 Further reading: [Security model](SECURITY_MODEL.md), [integration](INTEGRATION.md), [supervisor contract](SUPERVISOR_SPEC.md), [milestones](MILESTONES.md), [release notes](RELEASE_NOTES.md), [audit checkpoints](AUDIT_CHECKPOINTS.md).
+
+
+## v1.5 operator-only prototype (NOT RELEASED)
+
+The v1.5 branch adds `aegis_operator_service.py` and `aegis_operator_client.py`: a local Unix-domain operator interface with Linux peer-UID checks, Ed25519-signed short-lived commands, persistent replay accounting, and only `session.create`, `session.revoke`, and `session.fetch`. The agent must never receive the operator socket, signing key, vault references or session handle. There is **no model-facing delegation adapter**.
+
+The credential authority now requires `credential_profiles` for every vault reference. Only synthetic or explicitly acknowledged, short-lived disposable staging tokens are allowed; production, permanent and unclassified credentials are rejected. Each profile binds exact approved HTTPS origins, a UTC expiration and an expected SHA-256 token fingerprint. Fingerprint rotation invalidates pre-existing sessions. The trusted connection broker requires a sealed anonymous snapshot instead of a mutable vault FD. The worker still temporarily sees its token and can misuse it over its single allowed connection.
+
+Review [Operator Service Security](OPERATOR_SERVICE_SECURITY.md) before deployment. The disabled sample policies are `operator-api-policy.example.json` and `credential-policy.example.json`.
+
+```bash
+# Under an unprivileged Linux service identity
+PYTHONPATH=tests python3 -m unittest test_operator_service test_credentials -v
+PYTHONPATH=tests python3 -m unittest discover -s tests -v
+python aegis_sandbox_check.py
+```
+
+**Do not merge or use real credentials** until the exact PR head passes Ubuntu CI and deployment-host operator identity separation, key provisioning and residual credential disclosure have been independently reviewed.

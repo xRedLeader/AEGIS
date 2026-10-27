@@ -27,6 +27,16 @@ The kernel enforces endpoint confinement even if the worker bypasses every Pytho
 
 ## Process authority
 
+### v1.5 development: credentialed HTTPS
+
+The draft credential authority uses this same broker and sandbox for authenticated requests. The supervisor passes a protected, read-only vault descriptor to the trusted broker. The broker validates and reads a bounded bearer-token snapshot, closes the vault descriptor, loads the public TLS roots and connects the approved numeric IP/port. It supplies the token through bounded stdin to the `auth-http` worker. The helper starts only after the same namespace, capability and seccomp checks as the uncredentialed worker. The credential helper never opens a host-network socket or receives a vault path/descriptor; TLS and HTTP parsing happen inside confinement.
+
+Credential policies, approval keys and vault entries are rejected beneath `/usr`, which is the read-only runtime visible to workers. Keep all other sensitive material out of that runtime tree as well. No workstation paths, identities or special WSL behavior are part of the implementation.
+
+The authority checks session expiry/revocation, scope, route and CA policy while draining capped broker output. Both broker and supervisor enforce deadlines; cancellation and parent death tear down the connected capability. Authenticated output accepts only bounded status/count fields and a redirect flag. It retains no response headers, body, body hash or token. The unauthenticated transport remains unchanged in capability.
+
+**Limit:** this helper necessarily holds the granted token in memory. A compromised helper can send it or arbitrary traffic to its one authorized endpoint and can encode information in otherwise valid metadata or timing. Endpoint confinement is not a proof of secret non-disclosure, correct HTTP semantics or instant revocation. An endpoint may already possess the credential when cancellation occurs. The draft still needs an authenticated operator-service boundary and deployment security review; see `V1_5_IMPLEMENTATION_STATUS.md`.
+
 | Component | Authority |
 |---|---|
 | Operator | Signs scopes; controls policy, CA roots, revocations, service installation and audit checkpoints. Private signing keys stay outside runtime workers. |
@@ -60,5 +70,7 @@ Setup failure can occur after the trusted broker has established an **authorized
 ## Acceptance evidence
 
 `tests/test_egress.py` executes a fixed malicious probe through the production sandbox profile. It proves authorized TCP I/O while actual Python and raw libc socket/connect attempts return EPERM, including IPv6/UDP/Unix/netlink paths and namespace escape. It also covers descriptor hygiene, concurrent workers, missing prerequisites, interrupted setup, bounded output, deadlines and supervisor death. `tests/test_http_gateway.py` retains signed-scope, TLS, DNS, redirects, budgets, stop and revocation integration tests. `tests/test_isolation.py` retains fresh-interpreter and source-review tests.
+
+On the v1.5 branch, `tests/test_auth_egress.py` substitutes hostile code into the actual `auth-http` profile through test-only launchers. It repeats the raw-syscall attacks after a real TLS exchange, checks vault/descriptor isolation, injects setup failures, rejects wrong peers and forged metadata, floods both output pipes, and verifies TCP closure on live revocation, expiry, stop, route/CA changes, deadlines and supervisor death. The production code has no attacker-selectable executable or test hook. `tests/test_auth_http.py` runs real confined authenticated TLS, certificate rejection and redacted evidence tests without stubbing the broker.
 
 See `VERIFICATION.md` for environments actually tested. Run the acceptance tests on each deployment host; a passing unit test is not kernel evidence.

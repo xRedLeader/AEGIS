@@ -237,7 +237,11 @@ class AegisSupervisor:
             os.killpg(worker.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             worker.kill()
-        worker.communicate()
+        # Cancellation discards output; pipes may already be closed or hostile.
+        worker.wait()
+        for stream in (worker.stdin, worker.stdout, worker.stderr):
+            if stream is not None:
+                stream.close()
 
     def _write_report(self, info: dict, run_id: str, payload: bytes,
                       filename: str = "source-review.json") -> str:

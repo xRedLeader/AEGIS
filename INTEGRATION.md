@@ -34,3 +34,10 @@ python aegis_supervisor.py --manifest /etc/aegis/scope.yaml \
 Maintain fresh revocation snapshots and retain signed audit checkpoints independently. Only public CA material enters the HTTP worker. Credentials, arbitrary methods/headers, body capture and authenticated assessment are not enabled.
 
 Run `python aegis_http_demo.py` for an ephemeral signed loopback demonstration. See `HTTP_GATEWAY_SECURITY.md` before deployment: endpoint confinement does not independently enforce HTTP semantics if the worker is compromised.
+
+
+## v1.5 operator-only credential control (draft)
+
+Run `aegis_operator_service.py` under a dedicated non-root service identity. It exposes only a filesystem-private Unix-domain socket and checks both SO_PEERCRED and Ed25519-signed, short-lived replay-protected commands. `aegis_operator_client.py` uses a separate offline operator signing key. Allowed operations are `session.create`, `session.revoke` and `session.fetch`; no arbitrary tools or operator policy mutation. Signed grant files live in a protected approval directory. The agent must not have access to this socket, the signing key, the vault, or the privileged Python class.
+
+The sample JSON policies are disabled and require independent operator provisioning. Consult `OPERATOR_SERVICE_SECURITY.md` for credential classes, sealed snapshots and trust boundaries. Separate Linux UIDs and filesystem permissions matter; a mode-0700 directory does not allow unrelated unprivileged users to connect.

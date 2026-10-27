@@ -46,6 +46,7 @@ SYSTEM_ROOT = Path('/usr')
 WORKER_HOST = Path(__file__).resolve().with_name('aegis_worker.py')
 PROBE_HOST = Path(__file__).resolve().with_name('aegis_isolation_probe.py')
 HTTP_HOST = Path(__file__).resolve().with_name('aegis_http_gateway.py')
+AUTH_HTTP_HOST = Path(__file__).resolve().with_name('aegis_auth_helper.py')
 HTTP_PROBE_HOST = Path(__file__).resolve().with_name('aegis_egress_probe.py')
 
 class SandboxFailure(RuntimeError):
@@ -227,7 +228,7 @@ def _setup(args):
     if len(fields) != 1 or fields[0][:2] != ['0', str(args.host_uid)] or fields[0][2] != '1':
         raise SandboxFailure('unexpected user namespace mapping')
     jail = Path(args.jail)
-    network = args.mode in ('http', 'http-probe')
+    network = args.mode in ('http', 'http-probe', 'auth-http')
     repo_fd = args.repo_fd
     if network:
         if args.socket_fd is None or args.socket_fd < 3:
@@ -244,7 +245,8 @@ def _setup(args):
     elif repo_fd is None or repo_fd < 3 or not stat.S_ISDIR(os.fstat(repo_fd).st_mode):
         raise SandboxFailure('authorized repository descriptor invalid')
     worker_source = {'scan': WORKER_HOST, 'probe': PROBE_HOST,
-                     'http': HTTP_HOST, 'http-probe': HTTP_PROBE_HOST}[args.mode]
+                     'http': HTTP_HOST, 'http-probe': HTTP_PROBE_HOST,
+                     'auth-http': AUTH_HTTP_HOST}[args.mode]
     for p in (jail, worker_source):
         if not p.is_absolute() or p.is_symlink():
             raise SandboxFailure('namespace input path invalid')
@@ -275,6 +277,8 @@ def _setup(args):
         _mount(None, jail / 'repo', None, MS_BIND | MS_REMOUNT | MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC)
     (jail / 'app').mkdir(mode=0o755)
     _bind_readonly(worker_source, jail / 'app' / 'worker.py', is_file=True)
+    if args.mode == 'auth-http':
+        _bind_readonly(HTTP_HOST, jail / 'app' / 'aegis_http_gateway.py', is_file=True)
     # A directory fd from before chroot would provide an escape via openat.
     keep = {0, 1, 2} | ({args.socket_fd} if network else set())
     for fd in (int(name) for name in os.listdir('/proc/self/fd')):
@@ -312,7 +316,7 @@ def main(argv=None):
     ap.add_argument('--repo-fd', type=int)
     ap.add_argument('--socket-fd', type=int)
     ap.add_argument('--jail', required=True)
-    ap.add_argument('--mode', choices=('scan', 'probe', 'http', 'http-probe'), default='scan')
+    ap.add_argument('--mode', choices=('scan', 'probe', 'http', 'http-probe', 'auth-http'), default='scan')
     ap.add_argument('--host-uid', type=int, required=True)
     ap.add_argument('--parent-namespaces', required=True)
     args = ap.parse_args(argv)

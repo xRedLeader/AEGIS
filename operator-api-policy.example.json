@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "configured": false,
+  "principal": "example-operator",
+  "public_key_pem_path": "/etc/aegis/operator-api-public.pem",
+  "allowed_peer_uids": [],
+  "allowed_engagement_ids": [],
+  "socket_path": "/run/aegis/operator/operator.sock",
+  "approval_dir": "/etc/aegis/approvals",
+  "max_request_window_seconds": 60
+}
