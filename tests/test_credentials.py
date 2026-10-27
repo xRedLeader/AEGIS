@@ -1,5 +1,6 @@
 """Operator-approved credential sessions: replay, scope, revocation, time and leaks."""
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -44,6 +45,13 @@ class CredentialSessionTests(unittest.TestCase):
             "public_key_pem_path": str(self.pub),
             "allowed_engagement_ids": [self.fx.manifest["engagement"]["id"]],
             "credential_paths": {"vault://aegis/example/ordinary": str(self.secret)},
+            "credential_profiles": {"vault://aegis/example/ordinary": {
+                "classification": "synthetic",
+                "allowed_origins": ["https://staging.test.example"],
+                "issued_at_utc": (datetime.now(timezone.utc) - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "expires_at_utc": (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "fingerprint_sha256": hashlib.sha256(self.secret.read_bytes()).hexdigest(),
+                "exposure_acknowledged": True}},
             "max_session_seconds": 60, "max_uses": 3}
         self.policy_write()
         self.approve()
@@ -153,7 +161,7 @@ class CredentialSessionTests(unittest.TestCase):
     def test_secret_file_symlink_and_permissions(self):
         token = self.create()["handle"]
         self.secret.chmod(0o644)
-        with self.assertRaisesRegex(ExecutionDenied, "protected credential"):
+        with self.assertRaisesRegex(ExecutionDenied, "credential material"):
             self.broker()._open_secret_fd(token, {"origin": "https://staging.test.example", "target": "/secure/x"})
         self.secret.chmod(0o600)
         other = self.fx.p / "other.secret"
