@@ -427,7 +427,7 @@ class AegisCredentialAuthority(AegisHttpSupervisor):
                 payload = _json_bytes(evidence)
                 if len(payload) > HTTP_EVIDENCE_RESERVATION:
                     deny("credential metadata exceeds evidence reservation")
-                artifact = self._write_report(info, request_id, payload, "credential-http.json")
+                artifact = self._write_report(info, request_id, payload, "http-result.json")
                 self._finish_request(eid, request_id, "completed")
                 return {"status": "AUTHENTICATED_METADATA_COMPLETED",
                     "engagement_id": eid, "request_id": request_id,
