@@ -1,3 +1,11 @@
+## v1.8 development — first reporting and local-notification increment (not tagged)
+
+- Explicit v2 canonical findings schema; no severity for unverified/rejected cases. Legacy v1 schema preserved.
+- Safe source-review, OSV and bounded local-test evidence projections, deterministic Markdown and digest manifest.
+- Operator-owned private report files, atomic Linux no-replace promotion, guarded idempotence and durable SQLite notice enqueue.
+- Restricted local Unix-socket notification delivery with peer UID validation, signed-scope revalidation, challenge-bound ack, retry and failure accounting.
+- No external notification transport, production authorization or automatic promotion of leads into confirmed findings. See V1_8_REPORTING.md for release gates.
+
 # AEGIS v1.4.1 — independent kernel endpoint containment
 
 Feature branch implementation; publication is through a reviewed pull request, with no release tag created yet.

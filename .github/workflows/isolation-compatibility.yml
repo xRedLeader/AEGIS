@@ -22,7 +22,7 @@ jobs:
       - name: Unprivileged policy and schema tests
         env:
           PYTHONPATH: tests
-        run: .venv/bin/python -m unittest test_preflight test_report_schema test_egress.BrokerInputTests test_credentials test_operator_service -v
+        run: .venv/bin/python -m unittest test_preflight test_report_schema test_egress.BrokerInputTests test_credentials test_operator_service test_v18_reporting -v
   kernel:
     name: Kernel / ${{ matrix.os }} / system Python
     runs-on: ${{ matrix.os }}
@@ -76,7 +76,7 @@ jobs:
           "${prefix[@]}" .venv/bin/python aegis_http_demo.py
 
   source_snapshot:
-    name: Export tracked v1.5 branch for independent testing
+    name: Export tracked feature branch for independent testing
     if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/v1.5-credential-approvals' || github.ref == 'refs/heads/feat/v1.7-bounded-reproduction' || github.ref == 'refs/heads/feat/v1.8-findings-reporting')
     runs-on: ubuntu-24.04
     permissions:
@@ -84,11 +84,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Archive only tracked files at this commit
-        run: git archive --format=zip HEAD -o /tmp/aegis-v15-source.zip
+        run: git archive --format=zip HEAD -o /tmp/aegis-assessment-source.zip
       - name: Provide temporary source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: aegis-v15-source
-          path: /tmp/aegis-v15-source.zip
+          name: aegis-assessment-source
+          path: /tmp/aegis-assessment-source.zip
           retention-days: 1
           if-no-files-found: error

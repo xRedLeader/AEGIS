@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "configured": false,
+  "socket_path": "/run/aegis-notifications/receiver.sock",
+  "allowed_peer_uids": [],
+  "max_attempts": 3,
+  "timeout_seconds": 2
+}
