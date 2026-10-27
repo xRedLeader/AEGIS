@@ -48,3 +48,12 @@ A compromised gateway cannot open a connection to another IP or port, use UDP/IP
 - This is test evidence for a specific configuration, not a certification or a substitute for independent security review.
 
 Run `aegis_sandbox_check.py`, kernel egress tests and the complete suite on the deployment host after kernel/runtime or configuration changes.
+
+
+## v1.5 operator API and credential containment
+
+A dedicated non-root operator service owns a mode-0600 Unix socket in a private directory, protected ledger and credential profiles. Every command requires an independently pinned API signature over canonical JSON plus Linux SO_PEERCRED UID authorization. Commands expire within one minute; their unique IDs are consumed transactionally before executing any side effect. Only session creation, revocation and a scoped GET/HEAD request are supported. No model-facing delegation adapter exists.
+
+Private operator API, grant, and scope signing keys stay outside the untrusted worker and public repository. The operator-service process keeps only relevant protected public verification keys. Credential profiles explicitly reject production/permanent tokens and bind token fingerprints into sessions. The trusted broker accepts only sealed anonymous credential snapshots; vault files/descriptors are not passed into the sandbox.
+
+**Limit:** A compromised credential-bearing worker still holds the short-lived token temporarily and may send it or arbitrary bytes over the approved TCP stream. Kernel endpoint containment does not independently prove HTTP semantics or perfect secrecy; revocation cannot undo an already sent token. Operate using disposable staging accounts with strict routes and follow [Operator Service Security](OPERATOR_SERVICE_SECURITY.md).
