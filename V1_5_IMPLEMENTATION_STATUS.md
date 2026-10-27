@@ -34,3 +34,12 @@ A v1.4.1 compatibility failure was fixed: authenticated evidence uses the existi
 ## Release gate
 
 Keep PR #3 in draft. Do not tag v1.5 or use production credentials. The missing kernel egress boundary and hostile-helper cancellation coverage are addressed by this fix. Release still requires authenticated service APIs, independent review of credential exposure, current full Linux CI and deployment-host acceptance.
+
+
+## Operator-service and credential-lifecycle hardening (draft)
+
+The feature branch now includes a signed local Unix-domain operator interface (`aegis_operator_service.py`, `aegis_operator_client.py`), typed operations, SO_PEERCRED checks, and SQLite replay protection across restarts. Each credential reference requires a classified synthetic/disposable profile, explicit allowed origins, an expiry, an exposure acknowledgement, and a token fingerprint bound to the session. Broker credential handoff now requires an immutable sealed memfd, not a writable vault inode.
+
+Tests cover wrong signature, peer identity, expiration, replay and races, path traversal, real Unix-socket exchange, profile expiration, secret replacement/rotation and sealed snapshot immutability. The in-repository test matrix discovers these together with existing kernel egress and hostile-worker tests.
+
+**Still not a v1.5 release:** do not merge or use production credentials until CI passes on the final commit, deployer verifies operating-system identity separation and protected key provisioning, and an independent review accepts the residual risk of the credential in the kernel-confined worker memory. No general agent-facing API delegation exists.
