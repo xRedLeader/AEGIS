@@ -185,11 +185,16 @@ class AegisCredentialAuthority(AegisHttpSupervisor):
         con.execute("""CREATE TABLE IF NOT EXISTS credential_sessions (
             handle_hash TEXT PRIMARY KEY, approval_id TEXT NOT NULL UNIQUE,
             engagement_id TEXT NOT NULL, manifest_sha TEXT NOT NULL,
-            role TEXT NOT NULL, secret_ref TEXT NOT NULL,
+            role TEXT NOT NULL, secret_ref TEXT NOT NULL, secret_fingerprint TEXT,
             origin TEXT NOT NULL, path_prefix TEXT NOT NULL,
             created_epoch REAL NOT NULL, expires_epoch REAL NOT NULL,
             max_uses INTEGER NOT NULL, uses INTEGER NOT NULL DEFAULT 0,
             revoked INTEGER NOT NULL DEFAULT 0)""")
+        columns = {item[1] for item in con.execute("PRAGMA table_info(credential_sessions)")}
+        if "secret_fingerprint" not in columns:
+            # Legacy development sessions have no fingerprint binding; leave
+            # them NULL and deny use, rather than silently adopting a new token.
+            con.execute("ALTER TABLE credential_sessions ADD COLUMN secret_fingerprint TEXT")
 
     def validate_grant(self, obj, info, manifest, policy):
         now = time.time()
@@ -245,10 +250,12 @@ class AegisCredentialAuthority(AegisHttpSupervisor):
                         (obj["approval_id"], info["engagement_id"],
                          hashlib.sha256(payload).hexdigest(), now))
             con.execute("""INSERT INTO credential_sessions
-                (handle_hash,approval_id,engagement_id,manifest_sha,role,secret_ref,origin,
-                 path_prefix,created_epoch,expires_epoch,max_uses) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                (handle_hash,approval_id,engagement_id,manifest_sha,role,secret_ref,
+                 secret_fingerprint,origin,path_prefix,created_epoch,expires_epoch,max_uses)
+                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (hashlib.sha256(handle.encode()).hexdigest(), obj["approval_id"],
                  info["engagement_id"], info["manifest_sha256"], obj["role"], obj["secret_ref"],
+                 policy["credential_profiles"][obj["secret_ref"]]["fingerprint_sha256"],
                  obj["origin"], prefix, now, end, obj["max_uses"]))
             self._event(con, {"type": "credential_session_created", "engagement_id": info["engagement_id"],
                               "approval_id": obj["approval_id"], "role": obj["role"],
@@ -270,15 +277,18 @@ class AegisCredentialAuthority(AegisHttpSupervisor):
             except AuditError as exc:
                 raise ExecutionDenied("audit integrity check failed") from exc
             row = con.execute("""SELECT engagement_id, manifest_sha, role, secret_ref,
-                origin, path_prefix, expires_epoch, max_uses, uses, revoked
+                secret_fingerprint, origin, path_prefix, expires_epoch, max_uses, uses, revoked
                 FROM credential_sessions WHERE handle_hash=?""",
                 (hashlib.sha256(handle.encode()).hexdigest(),)).fetchone()
             if not row or row[0] != info["engagement_id"] or row[1] != info["manifest_sha256"]:
                 deny("credential session unavailable for this engagement")
-            eid, sha, role, ref, origin, prefix, expires, max_uses, uses, revoked = row
+            eid, sha, role, ref, bound_fingerprint, origin, prefix, expires, max_uses, uses, revoked = row
             if (revoked or time.time() >= expires or (uses >= max_uses and not allow_exhausted) or
                     origin != plan["origin"] or not _in_prefix(plan["target"].split("?",1)[0], prefix) or
-                    ref not in policy["credential_paths"]):
+                    ref not in policy["credential_paths"] or
+                    bound_fingerprint is None or
+                    bound_fingerprint != policy["credential_profiles"][ref]["fingerprint_sha256"] or
+                    origin not in policy["credential_profiles"][ref]["allowed_origins"]):
                 deny("credential session expired, revoked, exhausted or outside approved route")
             if consume:
                 con.execute("UPDATE credential_sessions SET uses=uses+1 WHERE handle_hash=?",
