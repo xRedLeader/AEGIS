@@ -214,6 +214,19 @@ def access(req):
         with self.assertRaisesRegex(ExecutionDenied,'untrusted|candidate'):
             sup.verify_evidence(self.fx.repo,'auth/guard.py',original['run_id'],seconds=5)
 
+    def test_verifier_denies_same_source_hash_under_different_module(self):
+        # Identical bytes do not make two independently authorized paths
+        # interchangeable as evidence provenance.
+        sup = self.configure('json_resource_access_v1', BAD_JSON, 'access')
+        recorded = sup.execute(self.fx.repo, 'auth/guard.py', seed=12,
+                               max_cases=24, seconds=5)
+        alternate = self.fx.repo / 'auth' / 'other.py'
+        alternate.write_bytes(self.target.read_bytes())
+        self.policy['targets']['auth/other.py'] = dict(self.policy['targets']['auth/guard.py'])
+        self.save()
+        with self.assertRaises(ExecutionDenied):
+            sup.verify_evidence(self.fx.repo, 'auth/other.py', recorded['run_id'], seconds=5)
+
     def test_verifier_denies_cross_scope_and_invalid_run_id(self):
         sup=self.configure('json_resource_access_v1',BAD_JSON,'access')
         with self.assertRaises(ExecutionDenied):
