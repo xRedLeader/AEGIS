@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AEGIS v1.8 canonical, evidence-bound security assessment",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "engagement_id", "source_run_id", "generated_at_utc", "assessment_status", "source_evidence", "findings", "coverage"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "engagement_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{7,63}$"},
+    "source_run_id": {"type": "string", "format": "uuid"},
+    "generated_at_utc": {"type": "string", "minLength": 10, "maxLength": 40},
+    "assessment_status": {"enum": ["limited_source_evidence_only", "independently_reviewed_limited_evidence"]},
+    "source_evidence": {"type": "object", "additionalProperties": false,
+      "required": ["relative_path", "sha256", "kind"], "properties": {
+        "relative_path": {"type": "string", "pattern": "^runs/[0-9a-f-]{36}/[a-z-]+\\.json$"},
+        "sha256": {"$ref": "#/$defs/hash"},
+        "kind": {"enum": ["source_review", "bounded_fuzz", "osv_advisory"]}
+      }},
+    "findings": {"type": "array", "maxItems": 150, "uniqueItems": true, "items": {"$ref": "#/$defs/finding"}},
+    "coverage": {"type": "object", "additionalProperties": false,
+      "required": ["tested", "untested", "limitations"], "properties": {
+        "tested": {"type": "array", "items": {"$ref": "#/$defs/line"}, "minItems": 1, "maxItems": 10},
+        "untested": {"type": "array", "items": {"$ref": "#/$defs/line"}, "minItems": 1, "maxItems": 10},
+        "limitations": {"type": "array", "items": {"$ref": "#/$defs/line"}, "minItems": 1, "maxItems": 10}
+      }}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "line": {"type": "string", "minLength": 1, "maxLength": 400},
+    "finding": {"type": "object", "additionalProperties": false,
+      "required": ["id", "verdict", "title", "affected_asset", "evidence_sha256", "evidence_ref", "description"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^A18-[0-9a-f]{20}$"},
+        "verdict": {"enum": ["confirmed", "needs_validation", "rejected"]},
+        "title": {"$ref": "#/$defs/line"},
+        "affected_asset": {"$ref": "#/$defs/line"},
+        "evidence_sha256": {"$ref": "#/$defs/hash"},
+        "evidence_ref": {"$ref": "#/$defs/line"},
+        "description": {"$ref": "#/$defs/line"},
+        "blocker": {"$ref": "#/$defs/line"},
+        "validation_plan": {"$ref": "#/$defs/line"},
+        "rejection_reason": {"$ref": "#/$defs/line"},
+        "severity": {"enum": ["critical", "high", "medium", "low", "informational"]},
+        "demonstrated_impact": {"$ref": "#/$defs/line"},
+        "remediation": {"$ref": "#/$defs/line"},
+        "verification_evidence_sha256": {"$ref": "#/$defs/hash"},
+        "verifier_id": {"type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{2,63}$"},
+        "verified_at_utc": {"type": "string", "minLength": 19, "maxLength": 40}
+      },
+      "allOf": [
+        {"if": {"properties": {"verdict": {"const": "confirmed"}}, "required": ["verdict"]},
+         "then": {"required": ["severity", "demonstrated_impact", "remediation", "verification_evidence_sha256", "verifier_id", "verified_at_utc"],
+                  "not": {"anyOf": [{"required": ["blocker"]}, {"required": ["validation_plan"]}, {"required": ["rejection_reason"]}]}}},
+        {"if": {"properties": {"verdict": {"const": "needs_validation"}}, "required": ["verdict"]},
+         "then": {"required": ["blocker", "validation_plan"],
+                  "not": {"anyOf": [{"required": ["severity"]}, {"required": ["demonstrated_impact"]}, {"required": ["remediation"]}, {"required": ["rejection_reason"]}]}}},
+        {"if": {"properties": {"verdict": {"const": "rejected"}}, "required": ["verdict"]},
+         "then": {"required": ["rejection_reason", "verification_evidence_sha256", "verifier_id", "verified_at_utc"],
+                  "not": {"anyOf": [{"required": ["severity"]}, {"required": ["demonstrated_impact"]}, {"required": ["remediation"]}, {"required": ["blocker"]}, {"required": ["validation_plan"]}]}}}
+      ]}
+  }
+}

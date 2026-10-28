@@ -1,3 +1,11 @@
+## v1.8 development — first reporting and local-notification increment (not tagged)
+
+- Explicit v2 canonical findings schema; no severity for unverified/rejected cases. Legacy v1 schema preserved.
+- Safe source-review, OSV and bounded local-test evidence projections, deterministic Markdown and digest manifest.
+- Operator-owned private report files, atomic Linux no-replace promotion, guarded idempotence and durable SQLite notice enqueue.
+- Restricted local Unix-socket notification delivery with peer UID validation, signed-scope revalidation, challenge-bound ack, retry and failure accounting.
+- No external notification transport, production authorization or automatic promotion of leads into confirmed findings. See V1_8_REPORTING.md for release gates.
+
 # AEGIS v1.4.1 — independent kernel endpoint containment
 
 Feature branch implementation; publication is through a reviewed pull request, with no release tag created yet.
@@ -47,3 +55,7 @@ fresh-exec integration testing, and consistent protected trust-policy reads.
 ## v1.7 expanded bounded local reproduction (draft, not tagged)
 
 Added operator-pinned `json_resource_access_v1` and `versioned_cas_v1` alongside tenant-isolation checks, 2–5 bounded repeated trials, trusted oracle output validation, minimal-case recording, and independent fresh-sandbox replay with a second budget reservation. CI: 296/296 tests passed on Ubuntu 22.04 and 24.04. This is a local offline security-invariant harness, not proof of a real-world exploit, generalized fuzzing or a production release. See `V1_7_ACCEPTANCE.md`.
+
+## v1.8 development (unreleased)
+
+Added evidence-bound canonical findings v2, operator-reviewed dual-signed staging finding promotion with retained proof bytes and immutable reviewed revisions, deterministic remediation reports, complete package integrity validation before local notification delivery, fenced/backoff SQLite outbox with bounded drain, and a separate durable Unix receiver using SO_PEERCRED, idempotency and commit-before-ack. This implementation does not offer production email/webhook delivery or automatic exploit confirmation. See `V1_8_REPORTING.md` for scope and release gates.

@@ -1,3 +1,11 @@
+# AEGIS v1.8 — evidence-bound findings and durable local notifications (draft PR)
+
+The v1.8 development branch adds canonical, immutable version-2 security reports; dual-signed human-reviewed finding promotion bound to retained staging evidence; remediation views; a durable local Unix notification receiver; and lease-fenced, backed-off, idempotent notification dispatch. Only the existing privileged operator service controls these APIs: no model gains unrestricted code execution, network access, or credential control. See [V1_8_REPORTING.md](V1_8_REPORTING.md). The local receiver is not an external email, webhook or human inbox, and signing an assessment does not objectively prove real-world exploitability.
+
+# AEGIS v1.8 — evidence-bound reporting and local notifications (draft)
+
+The v1.8 feature branch adds a versioned canonical findings schema, safe projections of completed assessment evidence into *unverified* leads, generated Markdown and integrity manifests, a durable notification outbox and an acknowledgement-verified local Unix-socket sender. **A queued event is not a delivered notification, and a lead is not a confirmed exploit.** No external notifications or new offensive tools are enabled. See [V1_8_REPORTING.md](V1_8_REPORTING.md). This is not a tagged release.
+
 # AEGIS v1.7 — bounded local reproduction (development, stacked PR)
 
 This stacked branch now supports three fixed, operator-pinned, network-denied Python contracts: exact tenant ownership, strict JSON resource authorization, and versioned compare-and-swap state transitions. The parent validates synthetic evidence, runs bounded repeats and can independently replay a minimal mismatch in a new kernel-isolated process with a new budget reservation. This is local security-invariant validation, not a general-purpose pentest engine or proof of deployed exploitation. See [V1_7_LOCAL_REPRODUCTION.md](V1_7_LOCAL_REPRODUCTION.md). The Cloudflare methodology integration remains reserved for **v2.1**, as planned in [V2_1_CLOUDFLARE_AUDIT_PLAN.md](V2_1_CLOUDFLARE_AUDIT_PLAN.md). Neither is a tagged release.
