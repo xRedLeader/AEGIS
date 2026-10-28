@@ -396,7 +396,7 @@ class IntegratedAssessment(AegisSupervisor):
                 "total":len(steps),"steps":steps,
                 "warning":"Local evidence is not deployed exploitation or remediation confirmation."}
 
-    def _claim(self, assessment_id, info, policy, sha):
+    def _claim(self, assessment_id, info, policy, sha, *, expected_step_id=None, expected_action=None):
         with self._database() as con:
             self._tables(con)
             if con.execute("SELECT 1 FROM integrated_abandonments WHERE assessment_id=?",(assessment_id,)).fetchone():
@@ -405,6 +405,9 @@ class IntegratedAssessment(AegisSupervisor):
         index = next((i for i,x in enumerate(steps) if x["state"]!="completed"),None)
         if index is None: return None
         step=steps[index]
+        if expected_step_id is not None or expected_action is not None:
+            if step["id"]!=expected_step_id or step["action"]!=expected_action:
+                deny("agent proposal no longer names the next exact approved step")
         if step["state"]=="attention":
             deny("interrupted or failed action requires operator reconciliation; never auto retry")
         if step["state"]=="leased":
@@ -511,9 +514,10 @@ class IntegratedAssessment(AegisSupervisor):
             return {"action":kind,"notice_id":row[0],"status":"LOCAL_DELIVERY_ACKNOWLEDGED"}
         deny("unrecognized integrated action")
 
-    def advance(self, assessment_id):
+    def advance(self, assessment_id, *, expected_step_id=None, expected_action=None):
         info, policy, sha = self._admit()
-        claim = self._claim(assessment_id,info,policy,sha)
+        claim = self._claim(assessment_id,info,policy,sha,
+                            expected_step_id=expected_step_id,expected_action=expected_action)
         if claim is None:
             return {"status":"WORKFLOW_COMPLETED_PENDING_INDEPENDENT_VALIDATION",
                     "assessment_id":assessment_id}

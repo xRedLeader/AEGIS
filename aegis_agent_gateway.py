@@ -227,7 +227,8 @@ class DelegatedAssessmentService:
             return {"status":"DELEGATED_WORKFLOW_SNAPSHOT","assessment_id":grant["assessment_id"],
                 "workflow_status":snap["status"],"completed":snap["completed"],"total":snap["total"],
                 "steps":[{"id":s["id"],"action":s["action"],"state":s["state"]} for s in snap["steps"]]}
-        completed=self.controller.advance(grant["assessment_id"])
+        completed=self.controller.advance(grant["assessment_id"],
+                    expected_step_id=req["step_id"],expected_action=req["expected_action"])
         if completed.get("step_id")!=req["step_id"]:
             deny("delegated completion did not match approved proposal")
         return {"status":"DELEGATED_STEP_COMPLETED","assessment_id":grant["assessment_id"],

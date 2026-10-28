@@ -87,6 +87,27 @@ class DelegationTests(IntegratedFixture):
             self.assertEqual(con.execute('SELECT count(*) FROM integrated_steps WHERE status="completed"').fetchone()[0],2)
         self.assertTrue(self.gateway.controller.verify_audit_chain())
 
+    def test_raced_proposal_never_runs_new_next_step(self):
+        # A separate operator progresses the plan after proposal admission but
+        # before this worker claims it. The gateway must fail *before* doing
+        # work, not discover the mismatch after running the wrong next action.
+        from unittest.mock import patch
+        payload=self.signed('propose',step_id='scan',expected_action='source_review')
+        consume=self.gateway._consume
+        def concurrent_progress(*args):
+            outcome=self.controller().advance(self.assessment)
+            self.assertEqual(outcome['step_id'],'scan')
+            return consume(*args)
+        with patch.object(self.gateway,'_consume',side_effect=concurrent_progress):
+            with self.assertRaisesRegex(ExecutionDenied,'no longer names'):
+                self.gateway.handle(payload,os.geteuid())
+        steps=self.controller().snapshot(self.assessment)['steps']
+        self.assertEqual(steps[0]['state'],'completed')
+        self.assertEqual(steps[1]['state'],'pending')
+        with self.controller()._database() as con:
+            self.assertEqual(con.execute("SELECT count(*) FROM agent_delegated_requests").fetchone()[0],1)
+        self.assertTrue(self.controller().verify_audit_chain())
+
     def test_wrong_peer_key_and_signature_are_denied(self):
         payload=self.signed()
         with self.assertRaises(ExecutionDenied):self.gateway.handle(payload,os.geteuid()+10000)
