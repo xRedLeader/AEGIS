@@ -1,4 +1,48 @@
-## v1.9 investigation planner — development candidate
+# AEGIS release notes
+
+## v2.0 implementation candidate — release sign-off pending
+
+The candidate in PR #8 composes the existing source review, offline dependency
+intelligence, bounded local contracts, metadata HTTP, immutable reporting,
+investigation and local notification components into an operator-pinned workflow.
+The separate delegated-agent gateway accepts only signed snapshots and proposals
+for the exact next authorized step. Grants and requests have separate Ed25519
+signatures, short lifetimes, OS peer-UID checks and persistent replay prevention.
+
+Reviewed report admission, separately authorized remediation observations,
+referenced-policy/source fingerprints, lease-fenced recovery and explicit
+operator abandonment preserve the existing authorization and evidence rules.
+Local completion and zero-lead retests do not independently confirm deployed
+impact or remediation.
+
+### Final hardening and review handoff
+
+- Closed the previously reproduced action-binding and abandonment races and
+  hardened delegation private-key reads against unsafe path replacement.
+- Host acceptance checks installed modules and protected ancestor paths, policy
+  and referenced public-key immutability, and delegation/receiver socket identity,
+  mode and group. These are measured observations, not human approval.
+- The read-only audit diagnostic now requires an existing protected ledger and
+  reads it without creating or initializing one. Regression tests verify that a
+  missing ledger remains absent and an existing ledger remains byte-identical.
+- Delegation signing now emits exactly the requested lifetime. The former
+  two-second backdating caused requests at configured or hard limits to be
+  rejected. Non-integer and out-of-range lifetimes are rejected at the client.
+- Consolidated the README and added [the review handoff](V2_0_REVIEW_HANDOFF.md),
+  which identifies exact-commit CI evidence and the specific external evidence
+  still needed. Source snapshots are retained in Actions for 30 days for review.
+
+The current candidate SHA, full Ubuntu matrix results and checksum count are
+recorded in [PR #8](https://github.com/xRedLeader/AEGIS/pull/8). Historical test
+counts below apply only to their stated revisions. Independent security review,
+actual-host acceptance, authorized real staging and recovery exercises, off-host
+checkpoint custody and the owner's risk decision remain required by
+[release acceptance](V2_0_RELEASE_ACCEPTANCE.md). No production tag or approval is
+conferred by this candidate. Cloudflare methodology remains planned for v2.1.
+
+## Historical implementation notes
+
+### v1.9 investigation planner — development candidate
 
 Operator-side deterministic bounded plans derived only from completed private v1.8 packages; immutable evidence and policy pinning; explicit local replay allowlists; verified shared-asset hypotheses remain unverified; persistent fenced leases and audit results; operator-only manual review/retest checkpoints. See `V1_9_INVESTIGATION.md`. No release tag or production deployment claim.
 
@@ -75,11 +119,3 @@ persistent budgets. Neither zero leads nor a successful local replay resolves
 a production finding or operator review checkpoint. A genuinely fixed deployed
 system remains a separate independent human/security-review determination.
 See `V1_9_INVESTIGATION.md` and `tests/test_v19_evidence.py`.
-
-## v2.0 development: integrated operator assessment
-
-Introduces a bounded, signed-scope, operator-owned orchestration ledger for fixed source review, OSV intelligence, pinned local contract checks, metadata HTTP, reports, investigation and acknowledged local notifications. Real namespace tests, replay-safe completion and fail-closed interrupted-operation recovery are required before release. This is **not** a v2.0 release or a new unrestricted autonomous execution API. Cloudflare audit-methodology orchestration remains planned for v2.1.
-
-## v2.0 bounded end-to-end acceptance candidate (not a production release)
-
-Added short-lived independently signed agent delegations, a provider-neutral strict JSON model adapter, cross-UID Unix control tests, referenced input digest pinning, imported reviewed report revisions, separately authorized synthetic remediation retests, and an auditable terminal abandonment path. All previously signed scope, worker isolation, budget and confirmation gates remain. Production deployment and independent security review remain prerequisites to a release tag.

@@ -2,9 +2,11 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import os
+import pwd
 import socket
 import stat
 import unittest
+from unittest.mock import patch
 
 from aegis_host_acceptance import (
     _code_installation, _protected_parent_chain, _protected_read_only,
@@ -30,11 +32,8 @@ class ReadOnlyDeploymentEvidenceTests(IntegratedFixture):
     def test_operator_evidence_reports_independent_gates_unapproved(self):
         # No real external host, independently retained audit anchor, production
         # agent UID, or human staging evidence exists in this synthetic fixture.
-        evidence=inspect_operator(
-            manifest=self.fx.fx.manifest_path,signature=self.fx.fx.sig_path,
-            trust=self.fx.fx.trust_path,state_root=self.fx.state,
-            assessment_policy=self.policy_path,delegation_policy=self.delegation_policy,
-            expected_agent_uid=12345,expected_receiver_uid=12346,kernel=False)
+        self.controller().create()
+        evidence=self.operator_evidence()
         self.assertEqual(evidence['status'],'NOT_PRODUCTION_APPROVED')
         checks={x['check']:x['result'] for x in evidence['checks']}
         self.assertEqual(checks['signed-scope-operator-policy-and-audit-chain'],'PASS')
@@ -44,6 +43,48 @@ class ReadOnlyDeploymentEvidenceTests(IntegratedFixture):
         self.assertEqual(checks['off-host-checkpoint-retention'],'REQUIRES_EXTERNAL_EVIDENCE')
         self.assertEqual(checks['service-cannot-rewrite-assessment-policy'],'FAIL')
         self.assertNotIn('synthetic-key',str(evidence))
+
+    def operator_evidence(self):
+        return inspect_operator(
+            manifest=self.fx.fx.manifest_path,signature=self.fx.fx.sig_path,
+            trust=self.fx.fx.trust_path,state_root=self.fx.state,
+            assessment_policy=self.policy_path,delegation_policy=self.delegation_policy,
+            expected_agent_uid=12345,expected_receiver_uid=12346,kernel=False)
+
+    def test_missing_audit_ledger_is_not_created_or_accepted(self):
+        ledger=self.fx.state/'ledger.sqlite3'
+        self.assertFalse(ledger.exists())
+        before=set(self.fx.state.iterdir())
+        evidence=self.operator_evidence()
+        checks={x['check']:x['result'] for x in evidence['checks']}
+        self.assertEqual(checks['signed-scope-operator-policy-and-audit-chain'],'FAIL')
+        self.assertFalse(ledger.exists())
+        self.assertEqual(set(self.fx.state.iterdir()),before)
+
+    def test_existing_audit_ledger_remains_byte_identical(self):
+        self.controller().create()
+        ledger=self.fx.state/'ledger.sqlite3'
+        before=ledger.read_bytes()
+        timestamp=ledger.stat().st_mtime_ns
+        files=set(self.fx.state.iterdir())
+        evidence=self.operator_evidence()
+        checks={x['check']:x['result'] for x in evidence['checks']}
+        self.assertEqual(checks['signed-scope-operator-policy-and-audit-chain'],'PASS')
+        self.assertEqual(ledger.read_bytes(),before)
+        self.assertEqual(ledger.stat().st_mtime_ns,timestamp)
+        self.assertEqual(set(self.fx.state.iterdir()),files)
+
+    def test_mutable_referenced_signer_keys_are_reported(self):
+        self.controller().create()
+        self.fx.fx.pub.chmod(0o600)
+        self.delegate_policy['configured']=True
+        self.delegate_policy['signer_public_key_path']=str(self.fx.fx.pub)
+        self.delegation_policy.write_bytes(canonical(self.delegate_policy))
+        evidence=self.operator_evidence()
+        checks={x['check']:x['result'] for x in evidence['checks']}
+        self.assertEqual(checks['signed-scope-operator-policy-and-audit-chain'],'PASS')
+        self.assertEqual(checks['service-cannot-rewrite-scope-signer-public-key'],'FAIL')
+        self.assertEqual(checks['service-cannot-rewrite-delegation-signer-public-key'],'FAIL')
 
     def test_writable_policy_fails_without_a_read_only_mount(self):
         with TemporaryDirectory() as name:
@@ -109,9 +150,45 @@ class ReadOnlyDeploymentEvidenceTests(IntegratedFixture):
             answer=inspect_receiver(policy_path=policy,expected_operator_uid=os.geteuid())
             self.assertEqual(answer['status'],'NOT_PRODUCTION_APPROVED')
             checks={x['check']:x['result'] for x in answer['checks']}
-            self.assertEqual(checks['live-separate-uid-receiver-socket-and-ledger'],'FAIL')
+            self.assertEqual(checks['live-separate-uid-receiver-socket-and-state-directory'],'FAIL')
             self.assertEqual(checks['independently-confirmed-durable-receipt'],
                              'REQUIRES_EXTERNAL_EVIDENCE')
+
+    def test_receiver_rejects_socket_group_mismatch(self):
+        with TemporaryDirectory() as name:
+            root=Path(name)
+            state=root/'state'
+            state.mkdir(mode=0o700)
+            parent=root/'socket'
+            parent.mkdir(mode=0o710)
+            target=parent/'receiver.sock'
+            operator_uid=next(p.pw_uid for p in pwd.getpwall()
+                              if 0<p.pw_uid<2**31 and p.pw_uid!=os.geteuid())
+            policy={'state_root':str(state),'socket_path':str(target),
+                    'shared_gid':os.getegid(),'allowed_sender_uids':[operator_uid]}
+            with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as server:
+                server.bind(str(target))
+                target.chmod(0o660)
+                # Keep this socket/OS-metadata check usable under root test
+                # launchers too; positive configuration parsing is tested in
+                # the receiver suite and real distinct-UID CI acceptance.
+                with patch('aegis_host_acceptance.receiver_policy',return_value=policy):
+                    answer=inspect_receiver(policy_path=root/'policy.json',
+                                            expected_operator_uid=operator_uid)
+                    key='live-separate-uid-receiver-socket-and-state-directory'
+                    self.assertEqual({c['check']:c['result'] for c in answer['checks']}[key],'PASS')
+                    actual_stat=os.stat
+                    def wrong_socket_group(path,*args,**kwargs):
+                        st=actual_stat(path,*args,**kwargs)
+                        if path==target.name and kwargs.get('dir_fd') is not None:
+                            fields=list(st)
+                            fields[5]=st.st_gid+1
+                            return os.stat_result(fields)
+                        return st
+                    with patch('os.stat',side_effect=wrong_socket_group):
+                        answer=inspect_receiver(policy_path=root/'policy.json',
+                                                expected_operator_uid=operator_uid)
+                    self.assertEqual({c['check']:c['result'] for c in answer['checks']}[key],'FAIL')
 
 
 if __name__=='__main__':unittest.main()

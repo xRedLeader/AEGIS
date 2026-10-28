@@ -34,14 +34,16 @@ def signed_grant(signer:Ed25519PrivateKey, client:Ed25519PublicKey, *,
                  engagement_id:str, assessment_id:str, manifest_sha256:str,
                  assessment_policy_sha256:str, client_uid:int,
                  permissions=("snapshot","propose"), seconds=180):
-    if not 1<=seconds<=900:deny("grant TTL invalid")
+    if type(seconds) is not int or not 1<=seconds<=900:deny("grant TTL invalid")
     now=datetime.now(timezone.utc)
     doc={"version":1,"grant_id":secrets.token_hex(16),"engagement_id":engagement_id,
          "assessment_id":assessment_id,"manifest_sha256":manifest_sha256,
          "assessment_policy_sha256":assessment_policy_sha256,
          "client_public_key_b64":base64.b64encode(client.public_bytes(Encoding.PEM,PublicFormat.SubjectPublicKeyInfo)).decode(),
          "client_uid":client_uid,"permissions":list(permissions),
-         "not_before_utc":_time(now-timedelta(seconds=2)),
+         # The gateway caps the entire signed interval, including any
+         # backdating. Emit exactly the requested lifetime even at its cap.
+         "not_before_utc":_time(now),
          "expires_at_utc":_time(now+timedelta(seconds=seconds))}
     data=canonical(doc)
     return data, signer.sign(GRANT_DOMAIN+data)
@@ -49,13 +51,13 @@ def signed_grant(signer:Ed25519PrivateKey, client:Ed25519PublicKey, *,
 
 def signed_request(client:Ed25519PrivateKey, grant:dict, operation:str,
                    *, step_id=None, expected_action=None, seconds=10):
-    if operation not in ("snapshot","propose") or not 1<=seconds<=30:
+    if operation not in ("snapshot","propose") or type(seconds) is not int or not 1<=seconds<=30:
         deny("invalid delegated request operation or lifetime")
     now=datetime.now(timezone.utc)
     doc={"version":1,"request_id":secrets.token_hex(16),
          "engagement_id":grant["engagement_id"],"assessment_id":grant["assessment_id"],
          "operation":operation,"step_id":step_id,"expected_action":expected_action,
-         "not_before_utc":_time(now-timedelta(seconds=2)),
+         "not_before_utc":_time(now),
          "expires_at_utc":_time(now+timedelta(seconds=seconds))}
     data=canonical(doc)
     return data,client.sign(REQUEST_DOMAIN+data)

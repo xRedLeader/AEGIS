@@ -42,6 +42,54 @@ proof a process is listening; live PID/UID/unit verification remains an external
 gate. Adversarial tests cover read-only leaf files in replaceable directories,
 wrong socket permissions/groups and symlinked socket paths.
 
+### SR-20-04 — read-only host evidence initialized a missing audit ledger (fixed)
+
+The diagnostic called `AegisSupervisor.verify_audit_chain()`, which opens the
+runtime database initializer. On a valid signed fixture without a ledger, that
+path created the database, audit schema and ledger identity, then reported the
+new empty chain as valid. A diagnostic must not manufacture the evidence it is
+supposed to inspect.
+
+The operator check now requires an existing, private, regular, non-linked ledger
+and invokes `aegis_audit.read_ledger()` using SQLite read-only mode. The new
+missing-ledger regression fails against `8eb48c6` and passes with this change.
+Another regression verifies an existing ledger's bytes, modification timestamp
+and directory entries remain unchanged. This fixes the evidence collector; it
+does not establish off-host custody or an independent deployment approval.
+
+### SR-20-05 — referenced key custody and receiver socket group omitted (fixed)
+
+The host collector checked top-level trust/delegation policy immutability but
+did not check the public-key paths those policies reference. It now applies the
+same protected-parent and read-only mount checks to both the scope signer and
+delegation signer public keys. A protected policy pointing to a mutable key no
+longer leaves that key's custody unmeasured.
+
+The receiver diagnostic also omitted the configured shared GID on the socket
+inode. It now shares the descriptor-relative socket type/UID/mode/GID validator
+with delegation. Its evidence label explicitly names the private state directory
+instead of implying that receipt records were inspected. Tests exercise mutable
+referenced keys and a socket GID mismatch. These changes improve acceptance
+evidence and do not broaden runtime authorization.
+
+### Delegation lifetime boundary correction
+
+The client backdated `not_before_utc` by two seconds while setting expiration to
+the requested duration after the current time. A requested 900-second grant
+therefore had a 902-second signed interval; a 30-second request had 32 seconds.
+The gateway correctly rejected these overlong intervals. The client now signs
+exactly the requested duration and rejects non-integer duration arguments.
+Frozen-clock tests exercise actual gateway acceptance at one-second, configured
+and hard limits. This was a client availability/correctness issue, not a gateway
+authorization bypass.
+
+The final closeout's focused host, delegation, release-race and source-integrity
+tests passed **29/29 as a non-root identity, with no skips**. The full supported
+Ubuntu acceptance for the exact committed candidate is recorded in
+[PR #8](https://github.com/xRedLeader/AEGIS/pull/8); those CI results must be
+checked separately from this local focused run. This remains author-assisted
+review and does not populate the independent human sign-off.
+
 ## Security-sensitive deployment constraints not proven by CI
 
 1. **Read-only operator inputs.** The runtime permits some service-owned mode-0600 policy/trust files. Service ownership alone permits that UID to rewrite them; enforce independently mounted read-only policy/trust paths or an equivalent independently reviewed OS mandatory access control rule. `aegis_host_acceptance.py` requires observed read-only mounts as its concrete supported check. Filesystem mode `0600` without independent write restriction is not a sufficient release sign-off.

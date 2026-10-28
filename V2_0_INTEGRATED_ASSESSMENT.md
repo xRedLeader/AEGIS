@@ -1,6 +1,6 @@
-# AEGIS v2.0 — integrated, authorized assessment workflow (development)
+# AEGIS v2.0 — integrated, authorized assessment workflow
 
-**First end-to-end integration increment, not the finished autonomous v2.0 security platform or a released tag.** v1.9 was merged into `main` before this feature branch. The operator controls every executable action; the workflow never grants an AI agent direct access to privileged Python classes, a shell, a vault, the network broker, a policy file or signing keys. Existing v1.4.1–v1.9 authorization, namespace, audit, credential isolation and evidence controls remain the actual security boundaries.
+**Implemented bounded workflow; independent release and deployment acceptance remain pending.** v1.9 was merged into `main` before this feature branch. The operator controls every executable action; the workflow never grants an AI agent direct access to privileged Python classes, a shell, a vault, the network broker, a policy file or signing keys. Existing v1.4.1–v1.9 authorization, namespace, audit, credential isolation and evidence controls remain the actual security boundaries. [The review handoff](V2_0_REVIEW_HANDOFF.md) records the candidate and outstanding evidence.
 
 ## What works now
 
@@ -13,7 +13,9 @@ A trusted operator can submit a protected, canonical, **disabled-by-default** v2
 | `local_contract` | `AegisFuzzSupervisor.execute` | Signed `bounded_fuzzing`; private, source-hash/callable-pinned fuzz policy |
 | `http_metadata` | `AegisHttpSupervisor.request` | Signed `controlled_http_testing`; operator-approved origin/route, numeric-IP pinning, brokered socket, no extra egress |
 | `report` | `ReportingSupervisor.generate` | Only a preceding completed source-review, dependency or local-contract run; immutable report package and outbox |
+| `admit_report` | Exact completed v1.8 reviewed report admission | Operator-pinned run and report SHA-256; retained independent review and investigation policy |
 | `investigate` | `EvidenceInvestigationSupervisor.create` | Previously reported run; private pinned v1.9 investigation policy |
+| `remediation_retest` | `EvidenceInvestigationSupervisor` attachment and observation | Earlier investigation, confirmed finding and separately authorized completed retest; conservative outcome requiring independent review |
 | `progress_investigation` | `EvidenceInvestigationSupervisor.run_allowed` | Previously created plan; strict action count; stops at manual checkpoints |
 | `notify` | `NotificationSupervisor.deliver` | A preceding report, private notification policy, verified receiver UID and challenge-bound durable acknowledgment |
 
@@ -35,6 +37,8 @@ Example workflow for an operator-owned staging repository:
 ```sh
 # 1. Provision an isolated, private operator policy (mode 0600) outside /usr,
 #    the AEGIS state/report root and the assessed repository.
+#    Use an independently read-only mount and protected parent paths;
+#    mode 0600 alone does not prevent the owning service from rewriting it.
 #    Enable only after confirming signed scope, pinned source, other policies,
 #    service identity, local receiver and testing budgets.
 

@@ -7,8 +7,9 @@ It cannot prove that a second independently owned host retains checkpoints,
 that a human independently reviewed staging impact, or that all service accounts
 are continuously isolated. The operator must supply and sign those facts.
 
-No scope changes, file writes, live external probes, assessment launches or
-operator signing keys are used by this diagnostic.
+The diagnostic does not change scope, initialize/update the audit ledger, contact
+external targets, launch assessments or use operator signing keys. Its optional
+benign kernel probe uses disposable local fixtures.
 """
 from __future__ import annotations
 
@@ -21,10 +22,11 @@ import pwd
 import stat
 import sys
 
-from aegis_audit import AuditError, verify_checkpoint
+from aegis_audit import AuditError, read_ledger, verify_checkpoint
 from aegis_agent_gateway import DelegatedAssessmentService
 from aegis_integrated_assessment import IntegratedAssessment
 from aegis_notification_receiver import _validated_policy as receiver_policy
+from aegis_preflight import PreflightError, read_protected_trust
 from aegis_supervisor import ExecutionDenied, open_directory_nofollow, private_directory
 
 
@@ -45,7 +47,8 @@ class AcceptanceEvidence:
         try:
             fn()
             self.check(name, True, "")
-        except (ExecutionDenied, AuditError, OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
+        except (ExecutionDenied, AuditError, PreflightError, OSError, ValueError,
+                RuntimeError, TypeError, KeyError) as exc:
             # Do not leak trusted paths, key bytes, scope data or exception text.
             self.check(name, False, type(exc).__name__ + " while verifying protected material")
 
@@ -133,6 +136,25 @@ def _protected_read_only(path: Path):
             os.close(fd)
 
 
+def _existing_audit_ledger(state_root: Path):
+    """Verify an existing protected ledger without creating or repairing it."""
+    state_root = Path(state_root)
+    with open_directory_nofollow(state_root) as directory:
+        private_directory(directory)
+        fd = os.open("ledger.sqlite3", os.O_RDONLY | os.O_NOFOLLOW |
+                     os.O_CLOEXEC | os.O_NONBLOCK, dir_fd=directory)
+        try:
+            st = os.fstat(fd)
+            if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or
+                    st.st_uid != os.geteuid() or st.st_mode & 0o077):
+                raise ValueError("audit ledger is not privately protected")
+            # The supervisor's verify_audit_chain() opens a writable database
+            # and initializes a missing ledger. Evidence must use mode=ro.
+            read_ledger(state_root)
+        finally:
+            os.close(fd)
+
+
 def _live_delegation_socket(path: Path, policy: dict):
     """Observe the actual delegation endpoint without connecting or sending."""
     path = Path(path)
@@ -171,8 +193,7 @@ def inspect_operator(*, manifest, signature, trust, state_root, assessment_polic
         info, policy, digest=engine._admit()
         if info["engagement_id"] not in policy["engagement_ids"] or len(digest)!=64:
             raise ValueError("signed scope not bound to active operator policy")
-        if not engine.verify_audit_chain():
-            raise ValueError("audit chain rejected")
+        _existing_audit_ledger(Path(state_root))
     evidence.task("signed-scope-operator-policy-and-audit-chain", signed_scope)
     def delegation():
         info,_,_=engine._admit()
@@ -193,6 +214,15 @@ def inspect_operator(*, manifest, signature, trust, state_root, assessment_polic
                        ("trust-policy",trust), ("assessment-policy",assessment_policy),
                        ("delegation-policy",delegation_policy)):
         evidence.task("service-cannot-rewrite-"+name, lambda p=path:_protected_read_only(Path(p)))
+    def scope_signer():
+        policy = read_protected_trust(Path(trust))
+        _protected_read_only(Path(policy["operator"]["public_key_pem_path"]))
+    evidence.task("service-cannot-rewrite-scope-signer-public-key", scope_signer)
+    def delegation_signer():
+        info, _, _ = engine._admit()
+        policy, _, _ = DelegatedAssessmentService(engine, Path(delegation_policy))._policy(info)
+        _protected_read_only(Path(policy["signer_public_key_path"]))
+    evidence.task("service-cannot-rewrite-delegation-signer-public-key", delegation_signer)
     if kernel:
         def kernel_probe():
             from aegis_sandbox_check import run_check
@@ -202,7 +232,7 @@ def inspect_operator(*, manifest, signature, trust, state_root, assessment_polic
         evidence.task("real-rootless-kernel-namespace-seccomp-probe", kernel_probe)
     else:
         evidence.pending("real-rootless-kernel-namespace-seccomp-probe",
-                         "Must run on target service account with --kernel before sign-off")
+                         "Must run on target service account without --skip-kernel before sign-off")
     if checkpoint and audit_public_key:
         def verify_anchor():
             v=verify_checkpoint(Path(state_root),Path(checkpoint),Path(audit_public_key))
@@ -231,19 +261,9 @@ def inspect_receiver(*, policy_path, expected_operator_uid):
         if expected_operator_uid==os.geteuid() or pol["allowed_sender_uids"] != [expected_operator_uid]:
             raise ValueError("receiver's allowed sender must be the other specific service UID")
         with open_directory_nofollow(Path(pol["state_root"])) as fd:private_directory(fd)
-        parent=Path(pol["socket_path"]).parent
-        with open_directory_nofollow(parent) as fd:
-            st=os.fstat(fd)
-            if (st.st_uid!=os.geteuid() or stat.S_IMODE(st.st_mode)!=(0o710 if pol["shared_gid"] is not None else 0o700) or
-                (pol["shared_gid"] is not None and st.st_gid!=pol["shared_gid"])):
-                raise ValueError("receiver socket directory owner/group/mode invalid")
         # Do not connect or send notices from an acceptance diagnostic.
-        sock=Path(pol["socket_path"])
-        st=os.lstat(sock)
-        if (not stat.S_ISSOCK(st.st_mode) or st.st_uid!=os.geteuid() or
-                stat.S_IMODE(st.st_mode)!=(0o660 if pol["shared_gid"] is not None else 0o600)):
-            raise ValueError("receiver's live socket permissions invalid")
-    evidence.task("live-separate-uid-receiver-socket-and-ledger", ids_and_private_state)
+        _live_delegation_socket(Path(pol["socket_path"]), pol)
+    evidence.task("live-separate-uid-receiver-socket-and-state-directory", ids_and_private_state)
     evidence.task("service-cannot-rewrite-receiver-policy",lambda:_protected_read_only(Path(policy_path)))
     evidence.pending("independently-confirmed-durable-receipt",
                      "Operator must verify sender retry/ack/no-ack and receiver restart on the actual host")
@@ -276,7 +296,8 @@ def main(argv=None):
         else:
             result=inspect_receiver(policy_path=args.receiver_policy,
                                     expected_operator_uid=args.expected_operator_uid)
-    except (ExecutionDenied, AuditError, OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
+    except (ExecutionDenied, AuditError, PreflightError, OSError, ValueError,
+            RuntimeError, TypeError, KeyError) as exc:
         print(json.dumps({"schema":"AEGIS-v2-host-acceptance-evidence-v1",
             "status":"NOT_PRODUCTION_APPROVED", "role":args.role,
             "checks":[{"check":"initialization","result":"FAIL",

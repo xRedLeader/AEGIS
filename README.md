@@ -1,129 +1,125 @@
-# AEGIS v2.0 security review and deployment acceptance (development)
+# AEGIS v2.0 — bounded authorized assessment
 
-The operator-authorized v2.0 integration is implemented in PR #8, but is **not
-production-approved**. Read [V2_0_SECURITY_REVIEW.md](V2_0_SECURITY_REVIEW.md)
-for independently reproducible race and key-path hardening, and
-[V2_0_HOST_ACCEPTANCE.md](V2_0_HOST_ACCEPTANCE.md) for fail-closed deployment
-checks and required external sign-off. `aegis_host_acceptance.py` cannot confer
-production approval. Original v1.5–v2.0 security scopes remain bounded; the
-Cloudflare audit methodology remains targeted for v2.1.
+AEGIS is a provider-independent assessment runner for explicitly authorized
+source repositories and staging services. An operator signs the scope and pins
+the allowed workflow. A delegated agent can inspect its state or propose its
+exact next approved step. Assessment workers run inside Linux namespaces with
+default-deny seccomp; the model receives no general shell, vault or signing key.
 
-# AEGIS v2.0 — Integrated authorized assessment (development)
-
-See [V2_0_RELEASE_ACCEPTANCE.md](V2_0_RELEASE_ACCEPTANCE.md) for the bounded, signed agent delegation gateway, synthetic staging review/retest, audited recovery and independent release gates. Provider-independent one-shot model proposals do not expand operator-approved execution authority. This is not a production release.
-
-# AEGIS v2.0 development — operator-owned integrated assessment
-
-This feature branch introduces a bounded, audit-pinned workflow that composes the already-authorized source reviewer, OSV intelligence, synthetic contract testing, canonical reporting, v1.9 investigation and durable local notification. **The initial controller did not add model-selected commands; the v2.0 expansion adds only a signed, fixed-action agent delegation boundary, not arbitrary execution, credential access or unconfined networking.** Its completed status means only the selected local steps finished—not that a vulnerability is confirmed, remediated or that the system is production-approved. See [V2_0_INTEGRATED_ASSESSMENT.md](V2_0_INTEGRATED_ASSESSMENT.md). v2.1 remains the separately planned Cloudflare audit-methodology integration.
-
-# AEGIS v1.9 — Bounded Investigation Orchestration (development)
-
-This branch implements a protected, operator-driven investigation planner for completed v1.8 reports. Plans use only typed actions, immutable evidence, conservative unverified attack-path hypotheses, and independently authorized fresh v1.7 replay. The v1.9 extension also admits up to eight distinct completed assessment reports per plan, identifies unverified cross-run asset overlaps, and records bounded operator-gated remediation observations against dual-signed confirmed findings without claiming a production fix. Both planner steps and retest attempts have durable, lease-fenced recovery. It does **not** add an agent-facing arbitrary shell, network, credentials, live testing, or automatic finding confirmation. See [V1_9_INVESTIGATION.md](V1_9_INVESTIGATION.md); v2.1 Cloudflare methodology remains separately planned.
-
-# AEGIS v1.8 — evidence-bound findings and durable local notifications (draft PR)
-
-The v1.8 development branch adds canonical, immutable version-2 security reports; dual-signed human-reviewed finding promotion bound to retained staging evidence; remediation views; a durable local Unix notification receiver; and lease-fenced, backed-off, idempotent notification dispatch. Only the existing privileged operator service controls these APIs: no model gains unrestricted code execution, network access, or credential control. See [V1_8_REPORTING.md](V1_8_REPORTING.md). The local receiver is not an external email, webhook or human inbox, and signing an assessment does not objectively prove real-world exploitability.
-
-# AEGIS v1.8 — evidence-bound reporting and local notifications (draft)
-
-The v1.8 feature branch adds a versioned canonical findings schema, safe projections of completed assessment evidence into *unverified* leads, generated Markdown and integrity manifests, a durable notification outbox and an acknowledgement-verified local Unix-socket sender. **A queued event is not a delivered notification, and a lead is not a confirmed exploit.** No external notifications or new offensive tools are enabled. See [V1_8_REPORTING.md](V1_8_REPORTING.md). This is not a tagged release.
-
-# AEGIS v1.7 — bounded local reproduction (development, stacked PR)
-
-This stacked branch now supports three fixed, operator-pinned, network-denied Python contracts: exact tenant ownership, strict JSON resource authorization, and versioned compare-and-swap state transitions. The parent validates synthetic evidence, runs bounded repeats and can independently replay a minimal mismatch in a new kernel-isolated process with a new budget reservation. This is local security-invariant validation, not a general-purpose pentest engine or proof of deployed exploitation. See [V1_7_LOCAL_REPRODUCTION.md](V1_7_LOCAL_REPRODUCTION.md). The Cloudflare methodology integration remains reserved for **v2.1**, as planned in [V2_1_CLOUDFLARE_AUDIT_PLAN.md](V2_1_CLOUDFLARE_AUDIT_PLAN.md). Neither is a tagged release.
-
-# AEGIS v1.4.1 — Kernel-Enforced Network Containment
-
-This stacked **v1.6 development branch** adds fixed offline dependency inventory, operator-attested OSV exact-version correlation and non-executing security scanner report parsers. Read [V1_6_SECURITY_INTELLIGENCE.md](V1_6_SECURITY_INTELLIGENCE.md). The previously released version remains v1.4.1; this is not a v1.6 release or an autonomous scanner.
-
-AEGIS is a provider-independent, authorization-scoped assessment runner. The released v1.4.1 provides a fixed read-only source reviewer and uncredentialed HTTP/HTTPS GET/HEAD metadata testing. It is not yet the autonomous v2.0 system in the roadmap.
-
-This v1.5 development branch also contains an operator-approved credential-session prototype with kernel-confined HTTPS transport. See [V1_5_IMPLEMENTATION_STATUS.md](V1_5_IMPLEMENTATION_STATUS.md) for its tests and remaining release gates. It remains draft; do not provision production credentials.
-
-The HTTP worker now runs inside private Linux user, mount, network and PID namespaces with default-deny seccomp. A trusted broker gives it **one already-connected TCP socket** to the verified numeric IP and port. The kernel denies new sockets, reconnects, UDP, Unix sockets, netlink and namespace changes. The worker cannot broaden its endpoint permission by modifying Python code or policy files.
-
-See [HTTP_GATEWAY_SECURITY.md](HTTP_GATEWAY_SECURITY.md) for the architecture diagram, privilege model, lifetime controls and precise limits. The trusted supervisor/DNS/connection broker and host kernel remain outside the compromised-worker threat model. Endpoint confinement does not independently enforce HTTP semantics: a compromised worker can misuse the one granted stream until killed.
+**Status: implementation candidate in [PR #8](https://github.com/xRedLeader/AEGIS/pull/8).
+Production approval is pending.** The current release evidence and remaining
+inputs are collected in [the review handoff](V2_0_REVIEW_HANDOFF.md).
+[Release acceptance](V2_0_RELEASE_ACCEPTANCE.md) defines the existing merge,
+release and deployment gates; [host acceptance](V2_0_HOST_ACCEPTANCE.md) provides
+the commands and sign-off record. Passing CI does not fill the independent
+reviewer or actual deployment-host fields.
 
 ## Implemented capabilities
 
-- **Signed authorization:** Ed25519-signed scopes, pinned public keys, independent operator trust, fresh revocation snapshots, time windows and exact method/asset restrictions.
-- **Source review:** fixed heuristic worker; authorized repository mounted read-only/noexec; no network; no repository code execution.
-- **HTTP/HTTPS:** exact approved origin and route; validate every DNS address against signed/trusted networks and exclusions; pin one numeric IP and TCP port. No DNS re-resolution by the worker.
-- **TLS:** verified certificates, hostname/SNI and system roots, optionally extended by a protected operator CA whose SHA-256 is checked. Only public CA material enters the worker.
-- **Persistent limits:** SQLite request/rate/concurrency/runtime/evidence and worst-case response-body reservations. Failures remain charged. Bodies are bounded, hashed and discarded.
-- **Stop and lifecycle:** repeated scope/route/CA/revocation checks, emergency stop, an independent worker deadline and kernel parent-death cleanup. Worker output is bounded before it reaches the supervisor.
-- **Audit:** local hash chain and separately signed operator checkpoints; independent off-host retention is still required.
+| Capability | Supported boundary |
+|---|---|
+| Signed authorization | Ed25519 scope, pinned verification keys, independent trust/revocation policy, expiry, stop and persistent budgets |
+| Source review | Fixed heuristic worker; authorized repository mounted read-only/noexec; no network or repository code execution |
+| Dependency intelligence | Offline inventory and operator-attested OSV snapshots; exact-version leads with range uncertainty retained |
+| Local contract testing | Pinned Python tenant, JSON authorization and versioned-state contracts; bounded trials and fresh isolated replay |
+| HTTP/HTTPS metadata | Approved GET/HEAD origin and route, checked DNS addresses, pinned numeric endpoint, verified TLS and one brokered connection |
+| Staging credentials | Separate operator-only session API; only classified, expiring synthetic or disposable staging tokens; sealed snapshots and revocation |
+| Evidence and findings | Immutable canonical reports; separate verifier/operator signatures for staging finding promotion; retained review proof |
+| Investigation and retesting | Typed report-bound plans, bounded cross-run observations and separately authorized local retests; no automatic production-fix verdict |
+| Notifications | Durable local Unix receiver, peer-UID validation, commit-before-ack and bounded retry; external human receipt requires separate evidence |
+| v2.0 workflow and delegation | At most 12 operator-pinned steps; short-lived signed grants, separately signed requests, OS peer identity, persistent replay prevention and exact-step binding |
+| Recovery and audit | Lease-fenced durable state, explicit operator abandonment, local hash chain and independently signed checkpoints |
 
-Only GET and HEAD are supported. No proxies, redirects, cookies, credentials, caller-provided headers, request bodies or arbitrary tool execution are enabled.
+The workflow's completed status means its configured local operations finished.
+Finding confirmation, deployed impact and remediation retain their independent
+review requirements. Cloudflare's coverage-led audit methodology is planned
+separately for [v2.1](V2_1_CLOUDFLARE_AUDIT_PLAN.md).
 
 ## Requirements and verification
 
-Use a **non-root Linux service identity**, system `/usr/bin/python3`, `/usr/bin/unshare`, `libseccomp.so.2`, functional user/mount/network/PID namespaces and read-only runtime bind mounts. Supported CI targets are Ubuntu 22.04/system Python 3.10 and Ubuntu 24.04/system Python 3.12.
+Supported CI targets are Ubuntu 22.04 with system Python 3.10 and Ubuntu 24.04
+with system Python 3.12. Runtime services must use non-root Linux identities,
+`/usr/bin/unshare`, `libseccomp.so.2`, functional user/mount/network/PID namespaces
+and read-only runtime bind mounts. Windows and macOS need a suitable Linux VM;
+other Linux environments must pass the same acceptance checks.
 
-```bash
-python -m pip install -r requirements.txt
-python -m unittest discover -s tests -v
-python aegis_sandbox_check.py
-python aegis_demo.py
-python aegis_http_demo.py
+From the exact candidate checkout, verify the tracked source before installing
+dependencies in an isolated environment:
+
+```sh
+/usr/bin/python3 aegis_source_integrity.py
+/usr/bin/python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python aegis_sandbox_check.py
+.venv/bin/python aegis_demo.py
+.venv/bin/python aegis_http_demo.py
 ```
 
-The tests and demos contact only local synthetic services. They generate temporary signing keys and certificates. The shipped example trust policy is disabled by default. Missing kernel prerequisites deny requests; there is no unconfined fallback.
+Run acceptance as the intended non-root service identity. Every security test
+must execute; skipped tests do not satisfy acceptance. The GitHub Ubuntu matrix
+explicitly fails if any test is skipped. Tests and demos use synthetic services,
+temporary keys and temporary certificates, and do not authorize a real target.
 
-Read [VERIFICATION.md](VERIFICATION.md) for actual results, CI gates and deployment checks. WSL installations with locked child mounts under `/usr` can fail the runtime bind; do not weaken confinement to bypass that failure.
-
-The code has no workstation-specific paths or user accounts. Installation location and operator state/policy paths are configurable. Windows and macOS hosts need a suitable Linux VM or execution environment; native Windows/macOS kernels cannot provide this Linux security boundary. Other Linux distributions must pass the same prerequisites and acceptance tests before use. Repository text uses LF line endings consistently across platforms.
-
-Ubuntu 24.04's AppArmor policy may deny unprivileged user namespaces by default. An operator must explicitly permit them for the trusted service. The named example profile in `deployment/apparmor/aegis-supervisor` grants that prerequisite; it is not a complete AppArmor confinement policy. Load it administratively and attach it to the service (for example, systemd `AppArmorProfile=aegis-supervisor`). The service still runs non-root. Do not disable AppArmor globally or bypass failed namespace checks. CI tests this opt-in configuration explicitly.
+Ubuntu 24.04 may require an administrator to load the named opt-in AppArmor
+profile in `deployment/apparmor/aegis-supervisor` and select it for the service.
+It grants the user-namespace prerequisite and is not a complete MAC policy.
+Keep AppArmor enabled and run the tests under the actual selected profile.
+Missing kernel prerequisites deny execution; there is no unconfined fallback.
 
 ## Operator setup
 
-1. Install all code in a protected location outside agent-writable repositories. Pin `AEGIS_TRUST_POLICY` and `AEGIS_STATE_ROOT`; use a service-owned mode-0700 state directory. Keep private signing keys outside runtime workers.
-2. Independently approve the engagement, exact origins, destination CIDRs and `controlled_http_testing` method. Configure `allowed_http_path_prefixes`, such as `{"https://staging.example.org":["/health"]}`. Routes default to deny.
-3. Issue a matching signed manifest with network, request, response-body, evidence, concurrency and runtime ceilings. Include `max_total_response_bytes`. Changed scope hashes require a new engagement.
-4. For a private staging CA, configure `tls_custom_ca` only in protected operator policy with an absolute `path` and SHA-256. The file must be regular, non-symlinked, protected against other-user writes, and outside tested repositories.
-5. Maintain fresh revocation snapshots and independently retain signed audit checkpoints.
-6. Expose only named source-review or HTTP metadata operations through your authenticated operator service. This package supplies a CLI, not that API service.
+1. Install the complete code set under protected directory chains outside
+   agent-writable repositories. Pin the reviewed Git commit and verify
+   `SHA256SUMS.txt`; checksums establish consistency, not independent provenance.
+2. Provision distinct non-root assessment/gateway, agent-adapter and receiver
+   identities. Restrict group access to the required delegation/receiver sockets.
+   Keep the privileged credential operator socket private.
+3. Protect signed scope, trust/revocation files, verification keys and workflow
+   policies with independently read-only mounts or separately reviewed MAC
+   controls. A service-owned mode-0600 file alone is still service-writable.
+   Keep private operator signing keys offline and outside worker mounts.
+4. Authorize the exact staging assets, methods, time window and resource limits.
+   Provision protected state, report and policy locations. All shipped example
+   policies are disabled; they are not deployment authorization.
+5. Create the fixed workflow using `aegis_integrated_assessment.py`. If delegation
+   is needed, start `aegis_agent_gateway.py` and separately issue a short-lived
+   grant through the offline operator client. The adapter accepts only strict
+   `snapshot` or exact-next-step `propose` decisions.
+6. Complete the [actual-host runbook](V2_0_HOST_ACCEPTANCE.md), independent staging
+   review, recovery drills and off-host checkpoint retention before release.
 
-```bash
-export AEGIS_TRUST_POLICY=/etc/aegis/trust-policy.json
-export AEGIS_STATE_ROOT=/var/lib/aegis/protected-state
+Use [the integrated assessment guide](V2_0_INTEGRATED_ASSESSMENT.md) for workflow
+commands and recovery, [release acceptance](V2_0_RELEASE_ACCEPTANCE.md) for
+delegation setup, and [integration](INTEGRATION.md) for the component interfaces.
+An interrupted action requires reconciliation; do not repeat it merely because
+the client did not receive a response.
 
-python aegis_supervisor.py --manifest /etc/aegis/scope.yaml \
-  --signature /etc/aegis/scope.yaml.sig http \
-  --url 'https://staging.example.org/health' --method HEAD --seconds 15
+## Security limits and upgrades
 
-python aegis_supervisor.py --manifest /etc/aegis/scope.yaml \
-  --signature /etc/aegis/scope.yaml.sig http-usage
+The trusted host, kernel, interpreter/dependencies, supervisor, connection broker,
+policies and signing keys remain part of the trusted boundary. Endpoint
+confinement does not constrain all bytes a compromised HTTP helper can send on
+its already-approved connection. A credential helper temporarily sees its
+staging token and may misuse that approved stream. Review those residual risks
+with the accountable operator.
 
-# Operator-only irreversible emergency stop:
-python aegis_supervisor.py stop --engagement-id ENGAGEMENT_ID
-```
+General shell execution, model-selected tools/targets, live HTTP mutation,
+automatic exploit confirmation, autonomous remediation and external notification
+transport are outside this release. Remove unrelated shell/network capabilities
+from the delegated agent. A local zero-lead retest does not certify a deployed
+fix; a local acknowledgment does not prove delivery to a human off-host.
 
-## Migration and limits
+Stop active operations before replacing trusted code, install the complete
+candidate together, preserve existing ledgers and signed engagement history,
+and rerun acceptance on the intended host. Changed scope or policy fingerprints
+require the existing reauthorization flow; upgrades do not expand authority.
 
-v1.4 signed scopes, operator policies and persistent ledger formats remain compatible. Install the new broker and launcher/gateway changes together, stop active operations before upgrading and rerun deployment-host tests. No host firewall rules, privileged broker or CAP_NET_ADMIN grant is needed.
+## Documentation
 
-A compromised assessment worker cannot choose another endpoint, but may send arbitrary bytes on its granted stream, violate application body limits or forge metadata until its deadline. Use narrow, authorized staging endpoints; GET is not intrinsically harmless. Exact wire-byte quotas, cgroups, authenticated testing, credentials, arbitrary tools, autonomous planning and external notifications remain future milestones.
-
-No guarantee covers a compromised trusted host, kernel, supervisor/broker, policy or signing key. Remove independent shell/network tools from the agent.
-
-Further reading: [Security model](SECURITY_MODEL.md), [integration](INTEGRATION.md), [supervisor contract](SUPERVISOR_SPEC.md), [milestones](MILESTONES.md), [release notes](RELEASE_NOTES.md), [audit checkpoints](AUDIT_CHECKPOINTS.md).
-
-
-## v1.5 operator-only prototype (NOT RELEASED)
-
-The v1.5 branch adds `aegis_operator_service.py` and `aegis_operator_client.py`: a local Unix-domain operator interface with Linux peer-UID checks, Ed25519-signed short-lived commands, persistent replay accounting, and only `session.create`, `session.revoke`, and `session.fetch`. The agent must never receive the operator socket, signing key, vault references or session handle. There is **no model-facing delegation adapter**.
-
-The credential authority now requires `credential_profiles` for every vault reference. Only synthetic or explicitly acknowledged, short-lived disposable staging tokens are allowed; production, permanent and unclassified credentials are rejected. Each profile binds exact approved HTTPS origins, a UTC expiration and an expected SHA-256 token fingerprint. Fingerprint rotation invalidates pre-existing sessions. The trusted connection broker requires a sealed anonymous snapshot instead of a mutable vault FD. The worker still temporarily sees its token and can misuse it over its single allowed connection.
-
-Review [Operator Service Security](OPERATOR_SERVICE_SECURITY.md) before deployment. The disabled sample policies are `operator-api-policy.example.json` and `credential-policy.example.json`.
-
-```bash
-# Under an unprivileged Linux service identity
-PYTHONPATH=tests python3 -m unittest test_operator_service test_credentials -v
-PYTHONPATH=tests python3 -m unittest discover -s tests -v
-python aegis_sandbox_check.py
-```
-
-**Do not merge or use real credentials** until the exact PR head passes Ubuntu CI and deployment-host operator identity separation, key provisioning and residual credential disclosure have been independently reviewed.
+- [Review handoff and outstanding evidence](V2_0_REVIEW_HANDOFF.md)
+- [Release acceptance](V2_0_RELEASE_ACCEPTANCE.md) and [actual-host runbook](V2_0_HOST_ACCEPTANCE.md)
+- [Security review and reproduced fixes](V2_0_SECURITY_REVIEW.md)
+- [Security model](SECURITY_MODEL.md), [HTTP boundary](HTTP_GATEWAY_SECURITY.md) and [operator API](OPERATOR_SERVICE_SECURITY.md)
+- [Integrated workflow](V2_0_INTEGRATED_ASSESSMENT.md), [investigations](V1_9_INVESTIGATION.md) and [reporting](V1_8_REPORTING.md)
+- [Audit checkpoints](AUDIT_CHECKPOINTS.md), [release notes](RELEASE_NOTES.md) and [milestones](MILESTONES.md)

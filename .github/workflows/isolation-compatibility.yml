@@ -90,7 +90,7 @@ jobs:
         with:
           name: aegis-assessment-source
           path: /tmp/aegis-assessment-source.zip
-          retention-days: 1
+          retention-days: 30
           if-no-files-found: error
 
   tracked_source_integrity:

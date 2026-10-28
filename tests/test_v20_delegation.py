@@ -134,6 +134,38 @@ class DelegationTests(IntegratedFixture):
         invalid=envelope(modified,self.operator.sign(GRANT_DOMAIN+modified),*signed_request(self.agent,data,'snapshot'))
         with self.assertRaises(ExecutionDenied):self.gateway.handle(invalid,os.geteuid())
 
+    def test_client_lifetimes_are_accepted_at_configured_and_hard_caps(self):
+        from unittest.mock import patch
+        clock = datetime.now(timezone.utc).replace(microsecond=0)
+        class FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return clock if tz is not None else clock.replace(tzinfo=None)
+        # Freeze both clocks so the one-second boundary is deterministic. The
+        # real gateway must accept messages emitted at its configured caps.
+        with patch('aegis_agent_client.datetime', FrozenDatetime), \
+             patch('aegis_agent_gateway.time.time', return_value=clock.timestamp()+0.5):
+            for grant_seconds, request_seconds in ((1,1),(180,10),(900,30)):
+                with self.subTest(grant_seconds=grant_seconds, request_seconds=request_seconds):
+                    self.delegate_policy['max_grant_seconds']=grant_seconds
+                    self.delegate_policy['max_request_seconds']=request_seconds
+                    self.save_delegate()
+                    grant, signature=self.authorize(ttl=grant_seconds)
+                    request, request_signature=signed_request(
+                        self.agent,json.loads(grant),'snapshot',seconds=request_seconds)
+                    outcome=self.gateway.handle(
+                        envelope(grant,signature,request,request_signature),os.geteuid())
+                    self.assertEqual(outcome['status'],'DELEGATED_WORKFLOW_SNAPSHOT')
+
+    def test_client_rejects_noninteger_or_out_of_range_lifetimes(self):
+        for seconds in (0,901,True,1.5,'20',None):
+            with self.subTest(grant_seconds=seconds), self.assertRaises(ExecutionDenied):
+                self.authorize(ttl=seconds)
+        grant=json.loads(self.authorize()[0])
+        for seconds in (0,31,True,1.5,'20',None):
+            with self.subTest(request_seconds=seconds), self.assertRaises(ExecutionDenied):
+                signed_request(self.agent,grant,'snapshot',seconds=seconds)
+
     def test_request_cannot_expand_permissions_or_live_action(self):
         grant=self.authorize(('snapshot',))
         with self.assertRaises(ExecutionDenied):

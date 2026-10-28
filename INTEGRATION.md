@@ -1,6 +1,17 @@
-# AEGIS v1.4.1 integration — provider-independent
+# AEGIS integration — provider-independent
 
-The operator owns installed code, service identity, signed scope, trust policy, revocation snapshots, protected state, report paths and private signing keys. The agent supplies only a target URL already authorized by scope, GET/HEAD selection and bounded time request.
+For the current v2.0 candidate, start with
+[the integrated workflow](V2_0_INTEGRATED_ASSESSMENT.md) and
+[signed agent delegation](V2_0_RELEASE_ACCEPTANCE.md). The delegated model
+interface accepts only `snapshot` and proposals for the exact next configured
+step. The direct component interfaces below remain operator-controlled; they
+are not additional delegated-agent capabilities. See
+[the review handoff](V2_0_REVIEW_HANDOFF.md) for release evidence and remaining
+deployment inputs.
+
+## v1.4.1 direct operator integration
+
+The operator owns installed code, service identity, signed scope, trust policy, revocation snapshots, protected state, report paths and private signing keys. The operator supplies only a target URL already authorized by scope, GET/HEAD selection and bounded time request.
 
 ## Named operations
 
@@ -9,11 +20,11 @@ The operator owns installed code, service identity, signed scope, trust policy, 
 - `http_usage()`: persistent request, active-slot and reserved response-body counters.
 - Operator only: stop, signing, policy/route changes, revocation refresh and audit checkpoint export.
 
-This package provides a CLI, not an authenticated API server or model tool adapter. Never expose the raw broker, launcher, gateway, probe, filesystem options, socket descriptors, executable paths or generic shell to an agent.
+These direct component CLIs are not the v2.0 delegated-agent interface. Never expose the raw broker, launcher, gateway, probe, filesystem options, socket descriptors, executable paths or generic shell to an agent.
 
 ## Deployment and migration
 
-Install the entire v1.4.1 code set, including `aegis_http_broker.py`, in a protected location. Run as a **non-root Linux service user**. Both scanner and HTTP now require working user/mount/network/PID namespaces and libseccomp; HTTP no longer works on a host where source isolation is unavailable.
+Install the complete candidate code set, including `aegis_http_broker.py`, in a protected location. Run as a **non-root Linux service user**. Both scanner and HTTP require working user/mount/network/PID namespaces and libseccomp; HTTP does not work on a host where source isolation is unavailable.
 
 No host firewall, veth, sudo broker or CAP_NET_ADMIN grant is required. The launcher briefly holds capabilities only inside its private user namespace, then drops them. DNS and the initial TCP connect belong to the trusted broker. The parser gets one preconnected peer capability and no ability to create or replace connections.
 
@@ -31,7 +42,7 @@ python aegis_supervisor.py --manifest /etc/aegis/scope.yaml \
   --url 'https://staging.example.org/health' --method HEAD --seconds 15
 ```
 
-Maintain fresh revocation snapshots and retain signed audit checkpoints independently. Only public CA material enters the HTTP worker. Credentials, arbitrary methods/headers, body capture and authenticated assessment are not enabled.
+Maintain fresh revocation snapshots and retain signed audit checkpoints independently. Only public CA material enters this uncredentialed HTTP worker. The separate v1.5 operator service below controls approved staging credentials; direct HTTP metadata commands do not gain that authority.
 
 Run `python aegis_http_demo.py` for an ephemeral signed loopback demonstration. See `HTTP_GATEWAY_SECURITY.md` before deployment: endpoint confinement does not independently enforce HTTP semantics if the worker is compromised.
 

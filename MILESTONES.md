@@ -2,6 +2,9 @@
 
 Each milestone is a separately tested increment, not a promised timeline. Unimplemented capabilities are future work. Failed or unexecuted acceptance gates block release.
 
+The v2.0 candidate's exact-commit evidence and outstanding operator/reviewer
+inputs are collected in [V2_0_REVIEW_HANDOFF.md](V2_0_REVIEW_HANDOFF.md).
+
 | Version | Milestone | Status and acceptance gate |
 |---|---|---|
 | v1.2 | Executable local supervisor, persistent budgets, emergency stop, audit trail | Implemented for fixed source review; signed scopes, persistent accounting, concurrency, stop and audit tests required. |

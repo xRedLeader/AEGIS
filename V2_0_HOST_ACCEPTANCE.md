@@ -38,7 +38,14 @@ python aegis_host_acceptance.py receiver \
   --expected-operator-uid 2000
 ```
 
-`2000` is likewise a placeholder. Receiver policy and ledger are inspected under the receiver's own UID. The tool checks live socket identity and permissions, but does not send a notification or forge an acknowledgment.
+`2000` is likewise a placeholder. Receiver policy, private state directory and socket are inspected under the receiver's own UID. The tool checks the socket inode's identity, mode and shared group; it does not inspect the receiver database, send a notification or forge an acknowledgment. Durable receipt and restart still need the real service exercise below.
+
+The operator audit check requires an **existing** protected ledger and verifies
+its identity and hash chain through a read-only SQLite connection. A missing
+ledger fails the check and remains absent; the diagnostic does not initialize
+or repair runtime state. Scope and delegation signer public-key paths referenced
+by policy receive the same read-only mount and protected-parent checks as the
+policy files themselves.
 
 The installation check now examines **all first-party `aegis_*.py` modules**,
 not just the main controller, and rejects writable ancestor directories even
@@ -56,7 +63,7 @@ Presence of a Unix socket path does **not** prove that a live gateway is
 listening; separately verify the active service-manager unit, PID, effective UID
 and group membership, and preserve those observations in the sign-off record.
 
-Every machine result is labeled `NOT_PRODUCTION_APPROVED` and lists `PASS`, `FAIL` and `REQUIRES_EXTERNAL_EVIDENCE` observations. A missing source/configuration file or unsafe mode is a **failed admission check**; a passing check verifies only the fact measured on that host. The CLI returns nonzero even if every automatable check passes, to prevent CI or scripts from mistaking collected evidence for human approval. Store the output in an operator-owned location with restricted access and independently attach it to the release review.
+Every machine result is labeled `NOT_PRODUCTION_APPROVED` and lists `PASS`, `FAIL` and `REQUIRES_EXTERNAL_EVIDENCE` observations. A missing source/configuration file or unsafe mode is a **failed admission check**; a passing check verifies only the fact measured on that host. Exit code **2** means at least one local check failed (or initialization failed); exit code **3** means no local check failed but external evidence remains required. There is no approval exit code. Store the output in an operator-owned location with restricted access and independently attach it to the release review. [The review handoff](V2_0_REVIEW_HANDOFF.md) identifies the exact evidence needed from each responsible role.
 
 ## Required independent actions
 
