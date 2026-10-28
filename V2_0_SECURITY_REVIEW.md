@@ -24,6 +24,24 @@ The new `tests/test_v20_release_races.py` reproduces both interleavings: **both 
 
 `aegis_agent_client._private_file` originally called `lstat(path)` and subsequently followed the same path with a regular `open(path)`, permitting a check/use gap if the directory was unexpectedly mutable. The replacement uses no-follow directory-relative opens, checks UID/mode/type/link count and bounded size on the **opened descriptor**, then checks identity/size again after reading. Negative tests reject symlink, hard-link, world-readable, relative and oversized key files. Key directory access and remote/offline signing-key custody remain deployment obligations.
 
+### SR-20-03 — host acceptance could falsely accept replaceable trusted code (fixed)
+
+The prior read-only host diagnostic checked just five Python modules for writable
+file modes. A runtime service could replace a mode-0444 module by renaming it
+within a writable parent directory; other imported first-party modules were not
+checked. The old check also verified read-only policy leaf mounts without ensuring
+that all ancestors were protected from service-owned path replacement.
+
+The acceptance diagnostic now checks the whole first-party `aegis_*.py` source
+set, its ancestor directory chain, file owner/mode/hardlink safety, effective
+service write access and independent read-only mount status for service-owned
+code. The same ancestor-chain rule applies to sensitive scope/policy paths.
+It also records the configured delegation socket's real inode owner, mode and
+sharing group without connecting. That is socket-presence evidence, **not**
+proof a process is listening; live PID/UID/unit verification remains an external
+gate. Adversarial tests cover read-only leaf files in replaceable directories,
+wrong socket permissions/groups and symlinked socket paths.
+
 ## Security-sensitive deployment constraints not proven by CI
 
 1. **Read-only operator inputs.** The runtime permits some service-owned mode-0600 policy/trust files. Service ownership alone permits that UID to rewrite them; enforce independently mounted read-only policy/trust paths or an equivalent independently reviewed OS mandatory access control rule. `aegis_host_acceptance.py` requires observed read-only mounts as its concrete supported check. Filesystem mode `0600` without independent write restriction is not a sufficient release sign-off.

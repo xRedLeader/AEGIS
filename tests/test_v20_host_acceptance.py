@@ -2,9 +2,13 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import os
+import socket
+import stat
 import unittest
 
-from aegis_host_acceptance import _protected_read_only, inspect_operator, inspect_receiver
+from aegis_host_acceptance import (
+    _code_installation, _protected_parent_chain, _protected_read_only,
+    _live_delegation_socket, inspect_operator, inspect_receiver)
 from test_v20_integrated import IntegratedFixture
 from aegis_reporting import canonical
 
@@ -50,8 +54,44 @@ class ReadOnlyDeploymentEvidenceTests(IntegratedFixture):
                 _protected_read_only(path)
             alias=Path(name)/'alias.json'
             alias.symlink_to(path)
-            with self.assertRaises(OSError):
+            with self.assertRaises((OSError, ValueError)):
                 _protected_read_only(alias)
+
+    def test_immutable_python_file_is_not_protected_by_writable_install_dir(self):
+        with TemporaryDirectory() as name:
+            root = Path(name) / "install"
+            root.mkdir(mode=0o700)
+            for fname in ("aegis_supervisor.py", "aegis_integrated_assessment.py",
+                          "aegis_agent_gateway.py", "aegis_sandbox.py",
+                          "aegis_audit.py", "aegis_host_acceptance.py"):
+                source = root / fname
+                source.write_text("# synthetic fixture only\n")
+                source.chmod(0o444)
+            # The service owns the directory and can rename a read-only module.
+            with self.assertRaises(ValueError):
+                _code_installation(root)
+            with self.assertRaises(ValueError):
+                _protected_parent_chain(root)
+
+    def test_live_delegation_socket_identity_and_mode(self):
+        with TemporaryDirectory() as name:
+            parent = Path(name) / "sockdir"
+            parent.mkdir(mode=0o700)
+            target = parent / "delegate.sock"
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                server.bind(str(target))
+                target.chmod(0o600)
+                _live_delegation_socket(target, {"shared_gid": None})
+                target.chmod(0o666)
+                with self.assertRaises(ValueError):
+                    _live_delegation_socket(target, {"shared_gid": None})
+                target.chmod(0o600)
+                with self.assertRaises(ValueError):
+                    _live_delegation_socket(target, {"shared_gid": os.getegid()})
+                target.unlink()
+                target.symlink_to(parent / "missing.sock")
+                with self.assertRaises(ValueError):
+                    _live_delegation_socket(target, {"shared_gid": None})
 
     def test_receiver_fails_self_uid_and_missing_live_socket(self):
         with TemporaryDirectory() as name:

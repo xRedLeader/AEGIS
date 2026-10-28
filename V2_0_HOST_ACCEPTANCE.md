@@ -40,6 +40,22 @@ python aegis_host_acceptance.py receiver \
 
 `2000` is likewise a placeholder. Receiver policy and ledger are inspected under the receiver's own UID. The tool checks live socket identity and permissions, but does not send a notification or forge an acknowledgment.
 
+The installation check now examines **all first-party `aegis_*.py` modules**,
+not just the main controller, and rejects writable ancestor directories even
+when a module itself is mode-0444. The policy check likewise rejects a
+service-replaceable parent, even if the policy leaf was independently bind-mounted
+read-only. Deploy code under root-protected, non-service-writable directory
+chains (for example `/opt/aegis`) or independently read-only filesystem mounts;
+all ancestor mounts are part of the protection boundary. Third-party interpreter,
+`.pth`/`PYTHONPATH` and installed-dependency custody still require separate
+operator review.
+
+The operator diagnostic also observes the delegation Unix-socket inode, owner,
+mode and shared group. Start the *real* delegation gateway before running it.
+Presence of a Unix socket path does **not** prove that a live gateway is
+listening; separately verify the active service-manager unit, PID, effective UID
+and group membership, and preserve those observations in the sign-off record.
+
 Every machine result is labeled `NOT_PRODUCTION_APPROVED` and lists `PASS`, `FAIL` and `REQUIRES_EXTERNAL_EVIDENCE` observations. A missing source/configuration file or unsafe mode is a **failed admission check**; a passing check verifies only the fact measured on that host. The CLI returns nonzero even if every automatable check passes, to prevent CI or scripts from mistaking collected evidence for human approval. Store the output in an operator-owned location with restricted access and independently attach it to the release review.
 
 ## Required independent actions

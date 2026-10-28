@@ -64,28 +64,61 @@ def _uid(uid):
     pwd.getpwuid(uid)
 
 
-def _code_installation():
-    """Trusted code must not be writable by the assessment process."""
-    root = Path(__file__).resolve().parent
-    for name in ("aegis_supervisor.py", "aegis_integrated_assessment.py",
-                 "aegis_agent_gateway.py", "aegis_sandbox.py", "aegis_audit.py"):
-        path = root / name
-        with open_directory_nofollow(path.parent) as directory:
+def _protected_parent_chain(directory: Path):
+    """Reject replaceable source/policy ancestors, not just writable leaf files.
+
+    A mode-0444 file in a service-writable directory is replaceable by rename.
+    A directory owned by the service can be chmod'ed back to writable unless
+    independently mounted read-only; a DAC 0555 check alone is insufficient.
+    """
+    directory = Path(directory)
+    if not directory.is_absolute():
+        raise ValueError("protected path must be absolute")
+    for parent in (*reversed(directory.parents), directory):
+        with open_directory_nofollow(parent) as fd:
+            st = os.fstat(fd)
+            readonly = bool(os.fstatvfs(fd).f_flag & os.ST_RDONLY)
+            if (not stat.S_ISDIR(st.st_mode) or st.st_uid not in (0, os.geteuid()) or
+                    st.st_mode & 0o022 or
+                    (st.st_uid == os.geteuid() and not readonly) or
+                    os.access(parent, os.W_OK, effective_ids=True)):
+                raise ValueError("trusted source or policy ancestor is replaceable")
+
+
+def _code_installation(root=None):
+    """Check all first-party Python modules and their replacement boundaries.
+
+    This is an observed host control, not a substitute for pinning a reviewed
+    Git commit or independently reviewing third-party Python import paths.
+    """
+    root = Path(root) if root is not None else Path(__file__).resolve().parent
+    _protected_parent_chain(root)
+    python_files = sorted(root.glob("aegis_*.py"))
+    required = {"aegis_supervisor.py", "aegis_integrated_assessment.py",
+                "aegis_agent_gateway.py", "aegis_sandbox.py", "aegis_audit.py",
+                "aegis_host_acceptance.py"}
+    if not required.issubset({p.name for p in python_files}):
+        raise ValueError("trusted AEGIS runtime installation is incomplete")
+    with open_directory_nofollow(root) as directory:
+        for path in python_files:
             fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
                          dir_fd=directory)
             try:
                 st = os.fstat(fd)
+                readonly = bool(os.fstatvfs(fd).f_flag & os.ST_RDONLY)
                 if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or
-                        st.st_mode & 0o022 or
-                        (st.st_uid == os.geteuid() and os.access(path, os.W_OK))):
-                    raise ValueError("installed trusted source is writable by service")
+                        st.st_uid not in (0, os.geteuid()) or st.st_mode & 0o022 or
+                        (st.st_uid == os.geteuid() and not readonly) or
+                        os.access(path, os.W_OK, effective_ids=True)):
+                    raise ValueError("installed AEGIS source is mutable or unsafe")
             finally:
                 os.close(fd)
 
 
 def _protected_read_only(path: Path):
-    """DAC ownership alone cannot protect a policy from its own service UID."""
+    """Protect policy leaf AND its directory chain against service replacement."""
     path = Path(path)
+    _protected_parent_chain(path.parent)
     with open_directory_nofollow(path.parent) as directory:
         fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
                      dir_fd=directory)
@@ -94,13 +127,28 @@ def _protected_read_only(path: Path):
             if (not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or
                     st.st_mode & 0o077 or st.st_uid not in (0, os.geteuid())):
                 raise ValueError("operator policy is not privately protected")
-            # A read-only bind mount or an independent read-only filesystem is
-            # a concrete way to prevent the service from changing its policy.
-            if not (os.statvfs(path).f_flag & os.ST_RDONLY):
-                raise ValueError("policy volume is writable by this service")
+            if not (os.fstatvfs(fd).f_flag & os.ST_RDONLY):
+                raise ValueError("policy mount is writable by its service")
         finally:
             os.close(fd)
 
+
+def _live_delegation_socket(path: Path, policy: dict):
+    """Observe the actual delegation endpoint without connecting or sending."""
+    path = Path(path)
+    with open_directory_nofollow(path.parent) as fd:
+        parent = os.fstat(fd)
+        group = policy["shared_gid"]
+        mode = 0o710 if group is not None else 0o700
+        if (parent.st_uid != os.geteuid() or
+                stat.S_IMODE(parent.st_mode) != mode or
+                (group is not None and parent.st_gid != group)):
+            raise ValueError("live delegation directory identity or mode is invalid")
+        node = os.stat(path.name, dir_fd=fd, follow_symlinks=False)
+        if (not stat.S_ISSOCK(node.st_mode) or node.st_uid != os.geteuid() or
+                stat.S_IMODE(node.st_mode) != (0o660 if group is not None else 0o600) or
+                (group is not None and node.st_gid != group)):
+            raise ValueError("live delegation socket identity or mode is invalid")
 
 def inspect_operator(*, manifest, signature, trust, state_root, assessment_policy,
                      delegation_policy, expected_agent_uid, expected_receiver_uid,
@@ -134,6 +182,13 @@ def inspect_operator(*, manifest, signature, trust, state_root, assessment_polic
         if socket_path.parent == Path(state_root):
             raise ValueError("delegation socket overlaps protected state")
     evidence.task("agent-delegation-policy-and-peer-uid", delegation)
+    def live_delegation():
+        info, _, _ = engine._admit()
+        pol, _, socket_path = DelegatedAssessmentService(engine, Path(delegation_policy))._policy(info)
+        _live_delegation_socket(socket_path, pol)
+    evidence.task("delegation-socket-inode-owner-group-and-mode", live_delegation)
+    evidence.pending("running-delegation-service-process-identity",
+                     "Operator must verify the gateway listener's actual PID, UID, service-manager unit and restart privileges")
     for name, path in (("signed-scope-manifest",manifest), ("scope-signature",signature),
                        ("trust-policy",trust), ("assessment-policy",assessment_policy),
                        ("delegation-policy",delegation_policy)):
