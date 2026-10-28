@@ -75,3 +75,9 @@ run` nor the v1.5 operator socket can invoke this extension implicitly. No
 model-facing retest delegate, policy write, credential broker, arbitrary
 shell/network command or deployed-exploit confirmation is added.
 See `V1_9_INVESTIGATION.md` for exact command examples and threat boundaries.
+
+## v2.0 end-to-end operator workflow (feature branch)
+
+The fixed `aegis_integrated_assessment.py` CLI provides `create`, `snapshot`, `advance`, and bounded `run` operations under a private, positively configured operator-owned `assessment-policy.json`. It composes *only* existing signed-scope supervisors and does not expose them to arbitrary model calls. A source step's UUID can be passed into reporting only by an explicit typed step dependency; reporting and investigation must originate from earlier admitted steps. Retesting and report promotion continue to require their existing independent controls.
+
+Use `V2_0_INTEGRATED_ASSESSMENT.md` for the exact policy schema, limits, recovery procedures and supported deployment. A stale or interrupted operation is operator-attention state, not a safe automatic retry.

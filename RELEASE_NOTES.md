@@ -75,3 +75,7 @@ persistent budgets. Neither zero leads nor a successful local replay resolves
 a production finding or operator review checkpoint. A genuinely fixed deployed
 system remains a separate independent human/security-review determination.
 See `V1_9_INVESTIGATION.md` and `tests/test_v19_evidence.py`.
+
+## v2.0 development: integrated operator assessment
+
+Introduces a bounded, signed-scope, operator-owned orchestration ledger for fixed source review, OSV intelligence, pinned local contract checks, metadata HTTP, reports, investigation and acknowledged local notifications. Real namespace tests, replay-safe completion and fail-closed interrupted-operation recovery are required before release. This is **not** a v2.0 release or a new unrestricted autonomous execution API. Cloudflare audit-methodology orchestration remains planned for v2.1.

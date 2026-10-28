@@ -95,3 +95,7 @@ recovery cannot bypass stop/revocation or convert a local negative result into
 an independently verified production fix. This is **not** an agent tool and
 must not be exposed through the credential-control Unix socket or any
 unrestricted shell bridge.
+
+## v2.0 composition boundary (development)
+
+The integrated controller is a trusted operator process, not an agent-facing command runner. It admits only a bounded private canonical action policy, pins the signed manifest and operator policy bytes, and delegates each fixed operation to its existing independently authorized supervisor. No new untrusted worker authority is introduced. Persistent step results are typed, audited and lease-fenced. An expired action is **not** re-executed without operator reconciliation; completing a local pipeline is not evidence of real-world exploitability or remediation. See `V2_0_INTEGRATED_ASSESSMENT.md`.
