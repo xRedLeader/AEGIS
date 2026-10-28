@@ -1,3 +1,13 @@
+# AEGIS v2.0 security review and deployment acceptance (development)
+
+The operator-authorized v2.0 integration is implemented in PR #8, but is **not
+production-approved**. Read [V2_0_SECURITY_REVIEW.md](V2_0_SECURITY_REVIEW.md)
+for independently reproducible race and key-path hardening, and
+[V2_0_HOST_ACCEPTANCE.md](V2_0_HOST_ACCEPTANCE.md) for fail-closed deployment
+checks and required external sign-off. `aegis_host_acceptance.py` cannot confer
+production approval. Original v1.5–v2.0 security scopes remain bounded; the
+Cloudflare audit methodology remains targeted for v2.1.
+
 # AEGIS v2.0 — Integrated authorized assessment (development)
 
 See [V2_0_RELEASE_ACCEPTANCE.md](V2_0_RELEASE_ACCEPTANCE.md) for the bounded, signed agent delegation gateway, synthetic staging review/retest, audited recovery and independent release gates. Provider-independent one-shot model proposals do not expand operator-approved execution authority. This is not a production release.

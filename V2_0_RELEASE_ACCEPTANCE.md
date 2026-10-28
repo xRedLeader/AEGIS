@@ -51,6 +51,31 @@ python aegis_http_demo.py
 
 Every kernel isolation test must execute; skipped security tests block acceptance. The Ubuntu 24.04 CI uses the named AppArmor opt-in profile, not global disablement. The CI-only `tests/cross_uid_agent_acceptance.py` runs from a privileged **fixture launcher** solely to provision two distinct non-root UIDs and verifies the actual Unix socket peer and replay behavior. Neither runtime service executes as root.
 
+## PR #8 security hardening and target-host evidence (additional acceptance)
+
+A targeted source review reproduced two concrete hardening defects in the initial
+v2.0 PR: the controller's abandonment/claim transaction interleaving, and the
+offline delegation key loader's check/use file-path race. The branch repairs both.
+`tests/test_v20_release_races.py` demonstrates that the abandonment races fail
+against the original source and pass with the transaction-atomic fix. New tests
+also reject private signing-key symlinks, hard links and unsafe permissions.
+
+Run `/usr/bin/python3 aegis_source_integrity.py` on the **exact tracked GitHub
+checkout** to check every non-manifest source against `SHA256SUMS.txt` (this
+consistency check does **not** authenticate GitHub's source without an independently
+pinned commit). The CI workflow also runs this check. Execute
+`python aegis_host_acceptance.py operator --help` and
+`python aegis_host_acceptance.py receiver --help` for the read-only evidence
+collector; `V2_0_HOST_ACCEPTANCE.md` gives the actual-host commands and identity
+requirements. The collector deliberately returns `NOT_PRODUCTION_APPROVED`, never
+a self-issued deployment certificate.
+
+The review details and unsatisfied human/host gates are recorded in
+`V2_0_SECURITY_REVIEW.md`. In particular, a file owned by the service UID with
+mode 0600 can still be **rewritten by that UID**; operator policy/trust content
+needs independent read-only mounts or equally reviewed mandatory-access controls
+in the intended deployment. CI's ephemeral fixtures do not establish that fact.
+
 ## Sign-off gates before merging, releasing or deploying
 
 - [ ] Independent code/security review of the v1.5–v2.0 trusted host, operator APIs, signing keys, policy file ownership, embedded agent adapter, privilege and OS isolation.

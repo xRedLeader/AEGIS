@@ -93,6 +93,16 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  tracked_source_integrity:
+    name: v2.0 tracked source consistency / ubuntu-24.04
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact tracked files and manifest digests
+        run: /usr/bin/python3 aegis_source_integrity.py
+
   notification_cross_uid:
     name: v1.8 separate-UID receiver / ubuntu-24.04
     runs-on: ubuntu-24.04

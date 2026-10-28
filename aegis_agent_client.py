@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives.serialization import (
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from aegis_reporting import canonical
 from aegis_agent_gateway import GRANT_DOMAIN, REQUEST_DOMAIN, _decode, _b64
-from aegis_supervisor import ExecutionDenied, deny
+from aegis_supervisor import ExecutionDenied, deny, open_directory_nofollow
 
 
 def _time(t):return t.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -90,11 +90,36 @@ def send(socket_path:str,payload:bytes,expected_service_uid:int):
 
 
 def _private_file(path:Path,max_bytes=8192):
-    path=Path(path)
-    st=path.lstat()
-    if not stat.S_ISREG(st.st_mode) or st.st_mode & 0o077 or st.st_size>max_bytes:
-        deny("private signing material file must be mode 0600")
-    with open(path,"rb") as f:return f.read(max_bytes+1)
+    """Read a stable private key by no-follow directory-relative descriptors.
+
+    lstat(path) followed by open(path) is a race: an attacker with write access
+    to a key directory could replace a checked regular file with a symlink.
+    Reject links, permission drift and size changes before parsing key bytes.
+    """
+    path = Path(path)
+    if not path.is_absolute() or not 0 < max_bytes <= 8192:
+        deny("private signing material requires a bounded absolute path")
+    with open_directory_nofollow(path.parent) as parent:
+        pst = os.fstat(parent)
+        if pst.st_uid not in (0, os.geteuid()) or pst.st_mode & 0o022:
+            deny("private key directory is not trusted")
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK |
+                     os.O_CLOEXEC, dir_fd=parent)
+        try:
+            before = os.fstat(fd)
+            if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or
+                before.st_uid not in (0, os.geteuid()) or before.st_mode & 0o077 or
+                not 0 < before.st_size <= max_bytes):
+                deny("private signing material file must be private and bounded")
+            data = os.read(fd, max_bytes + 1)
+            after = os.fstat(fd)
+            if (len(data) != before.st_size or
+                    (before.st_dev, before.st_ino, before.st_size) !=
+                    (after.st_dev, after.st_ino, after.st_size)):
+                deny("private signing material changed during read")
+            return data
+        finally:
+            os.close(fd)
 
 
 def _exclusive_file(path,data):

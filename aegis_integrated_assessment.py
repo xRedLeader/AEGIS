@@ -414,6 +414,9 @@ class IntegratedAssessment(AegisSupervisor):
             if step["lease_until"] < time.time():
                 with self._database() as con:
                     con.execute("BEGIN IMMEDIATE")
+                    _audit(con)
+                    if con.execute("SELECT 1 FROM integrated_abandonments WHERE assessment_id=?",(assessment_id,)).fetchone():
+                        deny("operator abandoned workflow; no lease recovery")
                     row=con.execute("SELECT lease_token FROM integrated_steps WHERE assessment_id=? AND ordinal=? AND status='leased'",(assessment_id,index)).fetchone()
                     if row:
                         con.execute("UPDATE integrated_steps SET status='attention',lease_token=NULL,lease_until=0 WHERE assessment_id=? AND ordinal=?",(assessment_id,index))
@@ -426,6 +429,11 @@ class IntegratedAssessment(AegisSupervisor):
         with self._database() as con:
             con.execute("BEGIN IMMEDIATE")
             _audit(con)
+            # Authority and step state must be checked inside the SAME write
+            # transaction.  An operator may have abandoned the workflow after
+            # the optimistic _rows() read but before this lease reservation.
+            if con.execute("SELECT 1 FROM integrated_abandonments WHERE assessment_id=?",(assessment_id,)).fetchone():
+                deny("operator abandoned workflow; no new execution")
             row=con.execute("SELECT status,attempts FROM integrated_steps WHERE assessment_id=? AND ordinal=?",(assessment_id,index)).fetchone()
             if row != ("pending",0):
                 deny("another worker already claimed this action")
@@ -574,6 +582,15 @@ class IntegratedAssessment(AegisSupervisor):
             con.execute("BEGIN IMMEDIATE")
             self._tables(con)
             _audit(con)
+            # The optimistic no-live-worker check above can race another
+            # process claiming an action. Recheck under BEGIN IMMEDIATE so an
+            # abandonment can never be committed alongside an active lease.
+            if con.execute("SELECT 1 FROM integrated_steps WHERE assessment_id=? AND status='leased' AND lease_until>?",
+                           (assessment_id,time.time())).fetchone():
+                deny("cannot abandon workflow with a newly claimed live worker lease")
+            if not con.execute("SELECT 1 FROM integrated_steps WHERE assessment_id=? AND status!='completed'",
+                               (assessment_id,)).fetchone():
+                deny("completed workflow cannot be abandoned retroactively")
             prior=con.execute("SELECT reason_code FROM integrated_abandonments WHERE assessment_id=?",
                               (assessment_id,)).fetchone()
             if prior and prior!=(reason_code,):
