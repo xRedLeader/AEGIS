@@ -1,6 +1,6 @@
 # AEGIS v1.9 — Bounded Investigation Orchestration (development)
 
-This branch implements a protected, operator-driven investigation planner for completed v1.8 reports. Plans use only typed actions, immutable evidence, conservative unverified attack-path hypotheses, a fresh authorized v1.7 local replay when specifically approved, and durable lease-fenced recovery. It does **not** add an agent-facing arbitrary shell, network, credentials, live testing, or automatic finding confirmation. See [V1_9_INVESTIGATION.md](V1_9_INVESTIGATION.md); v2.1 Cloudflare methodology remains separately planned.
+This branch implements a protected, operator-driven investigation planner for completed v1.8 reports. Plans use only typed actions, immutable evidence, conservative unverified attack-path hypotheses, and independently authorized fresh v1.7 replay. The v1.9 extension also admits up to eight distinct completed assessment reports per plan, identifies unverified cross-run asset overlaps, and records bounded operator-gated remediation observations against dual-signed confirmed findings without claiming a production fix. Both planner steps and retest attempts have durable, lease-fenced recovery. It does **not** add an agent-facing arbitrary shell, network, credentials, live testing, or automatic finding confirmation. See [V1_9_INVESTIGATION.md](V1_9_INVESTIGATION.md); v2.1 Cloudflare methodology remains separately planned.
 
 # AEGIS v1.8 — evidence-bound findings and durable local notifications (draft PR)
 

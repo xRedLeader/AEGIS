@@ -130,3 +130,112 @@ self-directed exploitation, full automatic chain validation, model-selected
 payload synthesis, native fuzzing, autonomous production remediation or an
 agent that can sign its own authorization. Deployment-host and operator/agent
 identity separation must still be independently reviewed before tagging.
+
+
+## Expanded v1.9: immutable cross-run investigation evidence
+
+The existing `aegis_investigation.py` planner and its typed step ledger remain
+unchanged; an operator can separately use `aegis_investigation_evidence.py` to
+admit additional **completed**, fully verified canonical v1.8 reports into a
+single investigation. This extension does not promote a finding, execute a
+model-selected tool, or change any original checkpoint. It requires the same
+operator-owned non-root execution identity, signed engagement and hash-pinned
+`investigation-policy.json` as the parent investigation.
+
+Each `attach` names one existing source run, and records its immutable report
+revision SHA-256, source evidence SHA-256, purpose, original finding mapping (if
+any), and a separate audit event in the protected ledger. Maximum eight
+additional reports per plan; duplicates are idempotent, while role changes,
+source tampering, revisions, cross-engagement identifiers and revoked policies
+fail closed. If an attached report is revised later, **the plan must be
+explicitly re-created or re-admitted under current authorization**; no silent
+revision upgrades or stale evidence assertions are allowed.
+
+An `evidence_snapshot` rechecks all attached reports against the current
+protected ledger, audit chain, original source bytes and v1.8 package hashes.
+The only cross-run attack-path candidates it emits are bounded exact matches
+on `affected_asset` across distinct source runs. Every link is tagged
+`UNVERIFIED_CROSS_RUN_ASSET_OVERLAP`, with `causal_transition_observed=false`.
+**Shared names do not prove a chain, exploitability or a fix.**
+
+## Operator-gated remediation observations
+
+An operator may attach a new report with purpose `remediation_retest` only if:
+
+1. The *original* source finding was independently reviewed and marked
+   `confirmed` through v1.8's two-key promotion process (including retained
+   proof). A local synthetic lead alone never qualifies.
+2. Both old and new evidence are completed, source-verified
+   `bounded_fuzz` reports for the same exact local contract and source module.
+   The new source's module, callable and fingerprint must match the operator's
+   separately protected, explicitly allowlisted v1.7 `replay_targets` and fuzz
+   policy. The original reported minimal replay recipe binds the identity of
+   the finding being retested.
+3. The operator explicitly chooses the source run and finding ID; no planner
+   action or agent content may create the mapping or broaden `bounded_fuzzing`.
+
+A retest is a **separate operator-only command**, never automatically scheduled
+by `run_allowed`. It uses a fenced SQLite lease with the original investigation
+policy's 60–300-second lease and 1–3 attempt budget. A stale process cannot
+finalize a newer claim; repeated and expired attempts are audited.
+
+If the new report includes local mismatch candidates, the operation invokes
+v1.7's existing `verify_evidence` for that specific new source and module,
+which reserves **another** signed persistent budget and executes only a
+source-pinned synthetic replay in a fresh no-network kernel sandbox.
+Possible recorded outcomes are `RETEST_LOCAL_LEAD_REPRODUCED_NEEDS_REVIEW` or
+`RETEST_LOCAL_NOT_REPRODUCED_NEEDS_REVIEW`. If the completed new report had no
+candidate mismatches, the result is `RETEST_NO_LOCAL_LEADS_NOT_VERIFIED_FIXED`:
+no additional execution is claimed, and zero leads are never proof of a fix.
+
+The retest never marks the original finding remediated, closes its manual
+`await_remediation_retest` step, changes verified impact or severity, or sends
+new assessment traffic to live systems. Those decisions remain with the
+operator and independent reviewer. Source changes, policy rotation, revoked
+engagements, altered reports and new operator targets stop further work.
+
+### Operator commands
+
+Supply the required `--manifest`, `--signature`, `--trust`, `--state-root`, and
+`--investigation-policy` arguments exactly as for the base planner, plus the
+existing `--plan-id`.
+
+```sh
+# Add another already-completed, authorized evidence report.
+python aegis_investigation_evidence.py \
+  --manifest /etc/aegis/scope.yaml --signature /etc/aegis/scope.sig \
+  --trust /etc/aegis/trust.json --state-root /var/lib/aegis \
+  --investigation-policy /etc/aegis/investigation-policy.json \
+  attach --plan-id <plan-uuid> --source-run <other-completed-run>
+
+# Explicitly associate an approved local retest report with a confirmed finding.
+python aegis_investigation_evidence.py \
+  --manifest /etc/aegis/scope.yaml --signature /etc/aegis/scope.sig \
+  --trust /etc/aegis/trust.json --state-root /var/lib/aegis \
+  --investigation-policy /etc/aegis/investigation-policy.json \
+  attach --plan-id <plan-uuid> --source-run <completed-retest-run> \
+  --purpose remediation_retest --finding-id <confirmed-A18-finding-id>
+
+# An operator triggers an allowed local-only retest (not autonomous remediation).
+python aegis_investigation_evidence.py \
+  --manifest /etc/aegis/scope.yaml --signature /etc/aegis/scope.sig \
+  --trust /etc/aegis/trust.json --state-root /var/lib/aegis \
+  --investigation-policy /etc/aegis/investigation-policy.json \
+  retest --plan-id <plan-uuid> --source-run <completed-retest-run>
+```
+
+Use `snapshot --plan-id <plan-uuid>` with the same protected arguments to read
+the immutable cross-run evidence graph and bounded retest disposition.
+
+### Added acceptance gates
+
+`tests/test_v19_evidence.py` covers cross-run correlation with no causal
+upgrading, report integrity and stale revisions, idempotent concurrent
+attachments, maximum attachment count, revocation and stop, dual-signed
+confirmed-only retest eligibility, wrong-source-module refusal, genuine v1.7
+kernel-isolated replay with independently charged budgets, synthetic
+zero-candidate evidence, stale lease fencing and crash/retry exhaustion.
+Run this alongside all inherited 1.4.1–1.9 security regressions on the
+supported non-root Ubuntu 22.04 and 24.04 CI matrix with zero skipped tests.
+An accepted implementation still requires operator deployment review and
+cannot claim a production application was remediated or an attack chain proved.
