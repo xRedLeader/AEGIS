@@ -81,3 +81,7 @@ See `V1_9_INVESTIGATION.md` for exact command examples and threat boundaries.
 The fixed `aegis_integrated_assessment.py` CLI provides `create`, `snapshot`, `advance`, and bounded `run` operations under a private, positively configured operator-owned `assessment-policy.json`. It composes *only* existing signed-scope supervisors and does not expose them to arbitrary model calls. A source step's UUID can be passed into reporting only by an explicit typed step dependency; reporting and investigation must originate from earlier admitted steps. Retesting and report promotion continue to require their existing independent controls.
 
 Use `V2_0_INTEGRATED_ASSESSMENT.md` for the exact policy schema, limits, recovery procedures and supported deployment. A stale or interrupted operation is operator-attention state, not a safe automatic retry.
+
+## v2.0 typed agent delegation and staging sign-off
+
+Only an operator-controlled Unix gateway may translate the model adapter's strict JSON `snapshot` or `propose` into the next preauthorized assessment action. A domain-separated operator-signed grant binds the assessment, policy digests, peer UID, agent public key and expiry; every client request is independently signed and persistently replay-protected. The gateway contains no signing private key and never offers arbitrary shell, network, policy or vault actions. See `V2_0_RELEASE_ACCEPTANCE.md`. Reviewed report admission and remediation retesting are named operator-pinned steps, not agent-directed exploit validation.

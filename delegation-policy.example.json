@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "configured": false,
+  "socket_path": "/run/aegis-agent/agent.sock",
+  "signer_public_key_path": "/etc/aegis/agent-delegation-signer.pub",
+  "allowed_peer_uids": [],
+  "allowed_engagement_ids": [],
+  "max_grant_seconds": 300,
+  "max_request_seconds": 20,
+  "shared_gid": null
+}

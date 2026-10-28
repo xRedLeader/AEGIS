@@ -69,4 +69,29 @@ Run `python -m unittest discover -s tests -v` as a non-root Linux service identi
 
 Before a production tag: independently review privileged operator code, all existing v1.5–v1.9 trust boundaries, deployment UID/socket/key permissions, control-plane and staging isolation, immutable evidence custody, off-host checkpoints, rate/timeout settings and a fully synthetic operator-provisioned staging assessment. Incident/rollback and crash-recovery drills on the **actual host** remain required.
 
-**Not yet complete for v2.0:** model-driven investigation selection under an independently authenticated *agent-facing* delegation API, broad reviewed scanner execution, current automated advisory ingestion, direct proof of a reachable deployed exploit, real HTTP mutation or autonomous remediation. Those are not simulated by synthetic replay. The overall v2.0 definition of done includes a complete independently reviewed authorized staging scenario with each remaining decision gate documented. Cloudflare's independent multi-agent coverage/hunting methodology is deliberately scheduled for **v2.1**, and does not grant authority to expand a signed scope.
+**First-increment limits (superseded in part by the final expansion below):** the first build lacked an authenticated model-facing delegation API and complete signed staging/retest integration. The expanded version addresses those *bounded* interfaces. Broad native scanners, automated advisory fetching, live HTTP mutation, objective deployed exploit verification and autonomous remediation remain outside the implemented synthetic-staging contract. The production release gate requires independent source/host review and an operator-authorized real staging exercise. Cloudflare's multi-agent coverage/hunting methodology remains planned for **v2.1**; no agent instructions grant signed AEGIS authority.
+
+## Final v2.0 bounded integration expansion
+
+The follow-up implementation adds a separately authenticated, operator-owned
+Unix-domain agent gateway, offline Ed25519 delegations, a narrow model-output
+adapter, durable request replay prevention and a distinct-UID socket test. The
+model can only request a bounded structural snapshot or explicitly propose
+the **next** operator-policy-pinned step. The operator retains all original
+execution authority and can reject or revoke the grant. No model-generated
+URL, payload, shell, credential handle, policy change or arbitrary method is
+admitted. See [V2_0_RELEASE_ACCEPTANCE.md](V2_0_RELEASE_ACCEPTANCE.md).
+
+Integrated workflows can now import a completed reviewed v1.8 report by its
+exact SHA-256 and, from an approved v1.9 investigation, record a separately
+authorized synthetic remediation retest. Every referenced operator policy
+and admitted signed-snapshot byte digest is pinned at workflow creation and
+checked again before the next action. The retest remains a local observation
+requiring an independent operator determination of deployment remediation.
+
+An operator may immutably abandon a failed/expired workflow with an enumerated
+reason; this stops further execution, without claiming rollback of already
+completed effects. All new capabilities have negative/adversarial and full
+Ubuntu kernel regression acceptance tests. v2.0 release status remains blocked
+on independent host, reviewer, key and deployment acceptance described in the
+release checklist.

@@ -1,6 +1,10 @@
+# AEGIS v2.0 — Integrated authorized assessment (development)
+
+See [V2_0_RELEASE_ACCEPTANCE.md](V2_0_RELEASE_ACCEPTANCE.md) for the bounded, signed agent delegation gateway, synthetic staging review/retest, audited recovery and independent release gates. Provider-independent one-shot model proposals do not expand operator-approved execution authority. This is not a production release.
+
 # AEGIS v2.0 development — operator-owned integrated assessment
 
-This feature branch introduces a bounded, audit-pinned workflow that composes the already-authorized source reviewer, OSV intelligence, synthetic contract testing, canonical reporting, v1.9 investigation and durable local notification. **It does not add agent-selected commands, credential access or unconfined network authority.** Its completed status means only the selected local steps finished—not that a vulnerability is confirmed, remediated or that the system is production-approved. See [V2_0_INTEGRATED_ASSESSMENT.md](V2_0_INTEGRATED_ASSESSMENT.md). v2.1 remains the separately planned Cloudflare audit-methodology integration.
+This feature branch introduces a bounded, audit-pinned workflow that composes the already-authorized source reviewer, OSV intelligence, synthetic contract testing, canonical reporting, v1.9 investigation and durable local notification. **The initial controller did not add model-selected commands; the v2.0 expansion adds only a signed, fixed-action agent delegation boundary, not arbitrary execution, credential access or unconfined networking.** Its completed status means only the selected local steps finished—not that a vulnerability is confirmed, remediated or that the system is production-approved. See [V2_0_INTEGRATED_ASSESSMENT.md](V2_0_INTEGRATED_ASSESSMENT.md). v2.1 remains the separately planned Cloudflare audit-methodology integration.
 
 # AEGIS v1.9 — Bounded Investigation Orchestration (development)
 

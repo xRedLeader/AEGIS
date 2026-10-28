@@ -107,3 +107,18 @@ jobs:
           .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
       - name: Verify distinct sender and receiver OS identities
         run: sudo -n .venv/bin/python tests/cross_uid_receiver_acceptance.py --sender-uid "$(id -u)" --sender-gid "$(id -g)"
+
+  agent_delegation_cross_uid:
+    name: v2.0 signed agent delegation / distinct UIDs / ubuntu-24.04
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install existing dependencies
+        run: |
+          /usr/bin/python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Test protected signed agent gateway across distinct UIDs
+        run: sudo -n .venv/bin/python tests/cross_uid_agent_acceptance.py --sender-uid "$(id -u)" --sender-gid "$(id -g)"

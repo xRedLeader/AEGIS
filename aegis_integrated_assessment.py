@@ -41,15 +41,18 @@ ACTION_FIELDS = {
     "local_contract": {"seconds", "module", "seed", "cases", "trials", "fuzz_policy"},
     "http_metadata": {"seconds", "url", "method"},
     "report": {"source"},
+    "admit_report": {"run_id", "report_sha256", "investigation_policy"},
+    "remediation_retest": {"source", "retest_run_id", "finding_id", "investigation_policy"},
     "investigate": {"source", "investigation_policy"},
     "progress_investigation": {"source", "investigation_policy", "max_steps"},
     "notify": {"source", "notification_policy"},
 }
 SOURCES = {
     "report": {"source_review", "dependency_intelligence", "local_contract"},
-    "investigate": {"report"},
+    "investigate": {"report", "admit_report"},
+    "remediation_retest": {"investigate"},
     "progress_investigation": {"investigate"},
-    "notify": {"report"},
+    "notify": {"report", "admit_report"},
 }
 EVIDENCE_NAMES = {
     "source_review": "source-review.json",
@@ -85,6 +88,33 @@ def _operator_path(value, info, state):
     if any(value == other or other in value.parents for other in forbidden):
         deny("operator-controlled file may not come from worker runtime, state, reports or repository")
     return value
+
+
+def _pinned_reference(path, info, state):
+    """Pin independently protected, bounded operator inputs for this plan.
+
+    Reading only these files never authorizes them: the existing source-specific
+    supervisors independently recheck signatures, scope, and their policies.
+    """
+    name=_operator_path(path,info,state)
+    with open_directory_nofollow(name.parent) as parent:
+        st=os.fstat(parent)
+        if st.st_uid not in (0,os.geteuid()) or st.st_mode & 0o022:
+            deny("referenced operator file parent is not protected")
+        fd=os.open(name.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC|os.O_NONBLOCK,dir_fd=parent)
+        try:
+            before=os.fstat(fd)
+            if (not stat.S_ISREG(before.st_mode) or before.st_nlink!=1 or
+                before.st_uid not in (0,os.geteuid()) or before.st_mode & 0o022 or
+                not 0<before.st_size<=2*1024*1024):
+                deny("referenced operator material has unsafe type, owner, permissions or size")
+            body=os.read(fd,2*1024*1024+1)
+            after=os.fstat(fd)
+            if (len(body)!=before.st_size or
+                (before.st_dev,before.st_ino,before.st_size)!=(after.st_dev,after.st_ino,after.st_size)):
+                deny("referenced operator material changed during read")
+            return hashlib.sha256(body).hexdigest()
+        finally:os.close(fd)
 
 
 def _policy(path, info, state):
@@ -167,13 +197,30 @@ def _policy(path, info, state):
                 deny("invalid fixed HTTP metadata operation")
             # The HTTP supervisor performs the definitive signed origin/route
             # and pinned numeric IP checks BEFORE any connection.
-        if kind in ("investigate", "progress_investigation", "notify"):
+        if kind in ("investigate", "progress_investigation", "notify", "admit_report", "remediation_retest"):
             _operator_path(entry["notification_policy"] if kind == "notify" else entry["investigation_policy"], info, state)
+        if kind == "admit_report":
+            if (not isinstance(entry["run_id"],str) or not RUN_ID.fullmatch(entry["run_id"]) or
+                not isinstance(entry["report_sha256"],str) or not HEX.fullmatch(entry["report_sha256"])):
+                deny("admitted report must pin exact completed source and version")
+        if kind == "remediation_retest":
+            if (not isinstance(entry["retest_run_id"],str) or not RUN_ID.fullmatch(entry["retest_run_id"]) or
+                not isinstance(entry["finding_id"],str) or not re.fullmatch(r"A18-[0-9a-f]{20}",entry["finding_id"])):
+                deny("remediation retest requires an exact source run and confirmed finding")
         if kind == "progress_investigation":
             if type(entry["max_steps"]) is not int or not 1 <= entry["max_steps"] <= 10:
                 deny("invalid bounded investigation progression")
         seen[entry["id"]] = kind
-    return policy, hashlib.sha256(raw).hexdigest()
+    references=[]
+    for entry in policy["steps"]:
+        for key in ("snapshot", "signature", "fuzz_policy", "investigation_policy", "notification_policy"):
+            if key in entry:
+                references.append((entry["id"], key, entry[key],
+                                   _pinned_reference(entry[key],info,state)))
+    # A byte-level change to an operator tool policy or signed advisory must
+    # invalidate the active plan, even if the main assessment policy is intact.
+    pinned=canonical([hashlib.sha256(raw).hexdigest(),references])
+    return policy, hashlib.sha256(pinned).hexdigest()
 
 
 def _audit(con):
@@ -200,6 +247,9 @@ class IntegratedAssessment(AegisSupervisor):
             lease_until REAL NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
             result_json TEXT, result_sha TEXT,
             PRIMARY KEY(assessment_id,ordinal), UNIQUE(assessment_id,step_id))""")
+        con.execute("""CREATE TABLE IF NOT EXISTS integrated_abandonments (
+            assessment_id TEXT PRIMARY KEY, engagement_id TEXT NOT NULL,
+            reason_code TEXT NOT NULL, recorded_utc TEXT NOT NULL)""")
 
     def _admit(self):
         info, _ = self._guard()
@@ -244,6 +294,8 @@ class IntegratedAssessment(AegisSupervisor):
             "local_contract":{"action","run_id","evidence"},
             "http_metadata":{"action","request_id","status"},
             "report":{"action","run_id","report_sha256"},
+            "admit_report":{"action","run_id","report_sha256"},
+            "remediation_retest":{"action","plan_id","run_id","finding_id","status"},
             "investigate":{"action","plan_id","run_id"},
             "progress_investigation":{"action","plan_id","executed","operator_review_required"},
             "notify":{"action","notice_id","status"},
@@ -256,6 +308,13 @@ class IntegratedAssessment(AegisSupervisor):
         for key in ("report_sha256","snapshot_sha256","notice_id"):
             if key in record and (not isinstance(record[key],str) or not HEX.fullmatch(record[key])):
                 deny("integrated outcome has invalid digest identity")
+        if kind=="remediation_retest" and (
+                not isinstance(record["finding_id"],str) or
+                not re.fullmatch(r"A18-[0-9a-f]{20}",record["finding_id"]) or
+                record["status"] not in ("RETEST_LOCAL_LEAD_REPRODUCED_NEEDS_REVIEW",
+                                           "RETEST_LOCAL_NOT_REPRODUCED_NEEDS_REVIEW",
+                                           "RETEST_NO_LOCAL_LEADS_NOT_VERIFIED_FIXED")):
+            deny("integrated retest must remain a bounded, unverified observation")
         if "evidence" in record and record["evidence"]!=EVIDENCE_NAMES[kind]:
             deny("integrated outcome changed evidence type")
         if kind=="http_metadata" and record["status"]!="SCOPED_HTTP_METADATA_ONLY":
@@ -318,7 +377,19 @@ class IntegratedAssessment(AegisSupervisor):
         steps=self._rows(assessment_id, info, policy, sha)
         done = sum(x["state"]=="completed" for x in steps)
         blocked = next((x for x in steps if x["state"]=="attention"),None)
-        status = ("REQUIRES_OPERATOR_RECONCILIATION" if blocked else
+        with self._database() as con:
+            self._tables(con)
+            abandoned=con.execute("SELECT reason_code,recorded_utc FROM integrated_abandonments WHERE assessment_id=? AND engagement_id=?",
+                                  (assessment_id,info["engagement_id"])).fetchone()
+            if abandoned:
+                _audit(con)
+                events=[json.loads(row[0]) for row in con.execute("SELECT event FROM audit ORDER BY seq")]
+                if not any(e.get("type")=="integrated_assessment_abandoned" and
+                           e.get("assessment_id")==assessment_id and e.get("reason_code")==abandoned[0] and
+                           e.get("recorded_utc")==abandoned[1] for e in events):
+                    deny("abandoned assessment has no hash-chained operator event")
+        status = ("ABANDONED_REQUIRES_OPERATOR_REVIEW" if abandoned else
+                  "REQUIRES_OPERATOR_RECONCILIATION" if blocked else
                   "WORKFLOW_COMPLETED_PENDING_INDEPENDENT_VALIDATION" if done==len(steps) else
                   "IN_PROGRESS")
         return {"status":status,"assessment_id":assessment_id,"completed":done,
@@ -326,6 +397,10 @@ class IntegratedAssessment(AegisSupervisor):
                 "warning":"Local evidence is not deployed exploitation or remediation confirmation."}
 
     def _claim(self, assessment_id, info, policy, sha):
+        with self._database() as con:
+            self._tables(con)
+            if con.execute("SELECT 1 FROM integrated_abandonments WHERE assessment_id=?",(assessment_id,)).fetchone():
+                deny("operator abandoned workflow; no automatic retry")
         steps = self._rows(assessment_id,info,policy,sha)
         index = next((i for i,x in enumerate(steps) if x["state"]!="completed"),None)
         if index is None: return None
@@ -384,7 +459,30 @@ class IntegratedAssessment(AegisSupervisor):
             if not isinstance(result,dict) or not isinstance(result.get("request_id"),str):
                 deny("fixed HTTP metadata operation did not complete")
             return {"action":kind,"request_id":result["request_id"],"status":"SCOPED_HTTP_METADATA_ONLY"}
+        if kind=="admit_report":
+            from aegis_investigation_evidence import EvidenceInvestigationSupervisor
+            reviewer=EvidenceInvestigationSupervisor(*args,Path(entry["investigation_policy"]))
+            current,_=self._guard()
+            _,sha,_=reviewer._report(current,entry["run_id"])
+            if sha!=entry["report_sha256"]:
+                deny("admitted report differs from operator-pinned reviewed revision")
+            return {"action":kind,"run_id":entry["run_id"],"report_sha256":sha}
         source=completed[entry["source"]]
+        if kind=="remediation_retest":
+            from aegis_investigation_evidence import EvidenceInvestigationSupervisor
+            reviewer=EvidenceInvestigationSupervisor(*args,Path(entry["investigation_policy"]))
+            reviewer.attach(source["plan_id"],entry["retest_run_id"],
+                purpose="remediation_retest",finding_id=entry["finding_id"])
+            outcome=reviewer.retest(source["plan_id"],entry["retest_run_id"])
+            if outcome.get("status")!="RETEST_OBSERVATION_RECORDED":
+                deny("remediation retest was not independently recorded")
+            status=outcome.get("outcome",{}).get("status")
+            if status not in ("RETEST_LOCAL_LEAD_REPRODUCED_NEEDS_REVIEW",
+                             "RETEST_LOCAL_NOT_REPRODUCED_NEEDS_REVIEW",
+                             "RETEST_NO_LOCAL_LEADS_NOT_VERIFIED_FIXED"):
+                deny("unrecognized remediation retest outcome")
+            return {"action":kind,"plan_id":source["plan_id"],
+                "run_id":entry["retest_run_id"],"finding_id":entry["finding_id"],"status":status}
         if kind=="report":
             result=ReportingSupervisor(*args).generate(source["run_id"],source["evidence"])
             if result.get("status") not in ("ASSESSMENT_QUEUED","ASSESSMENT_ALREADY_QUEUED") or not HEX.fullmatch(result["sha256"]):
@@ -452,6 +550,40 @@ class IntegratedAssessment(AegisSupervisor):
         return {"status":"INTEGRATED_ACTION_COMPLETED","assessment_id":assessment_id,
                 "step_id":entry["id"],"result":result}
 
+    def abandon(self, assessment_id, reason_code):
+        """Operator-only append-only terminal reconciliation of an abandoned run.
+
+        Cannot erase completed actions, rewind budgets or roll back evidence;
+        the operator must inspect uncertain side effects and create a *new*
+        authorization-bound workflow when further execution is warranted.
+        """
+        if reason_code not in ("interrupted_unknown_outcome","operator_cancelled",
+                               "deployment_recovery_required"):
+            deny("invalid operator reconciliation reason")
+        info,policy,sha=self._admit()
+        steps=self._rows(assessment_id,info,policy,sha)
+        if all(x["state"]=="completed" for x in steps):
+            deny("completed workflow cannot be abandoned retroactively")
+        if any(x["state"]=="leased" and x["lease_until"]>time.time() for x in steps):
+            deny("cannot abandon workflow with a live worker lease")
+        with self._database() as con:
+            con.execute("BEGIN IMMEDIATE")
+            self._tables(con)
+            _audit(con)
+            prior=con.execute("SELECT reason_code FROM integrated_abandonments WHERE assessment_id=?",
+                              (assessment_id,)).fetchone()
+            if prior and prior!=(reason_code,):
+                deny("operator reconciliation history is immutable")
+            if prior is None:
+                stamp=_timestamp()
+                con.execute("INSERT INTO integrated_abandonments VALUES(?,?,?,?)",
+                            (assessment_id,info["engagement_id"],reason_code,stamp))
+                self._event(con,{"type":"integrated_assessment_abandoned",
+                        "assessment_id":assessment_id,"engagement_id":info["engagement_id"],
+                        "reason_code":reason_code,"recorded_utc":stamp})
+            con.commit()
+        return self.snapshot(assessment_id)
+
     def run(self, assessment_id, max_actions=12):
         if type(max_actions) is not int or not 1 <= max_actions <= MAX_ACTIONS:
             deny("invalid integrated progression limit")
@@ -470,10 +602,11 @@ def main(argv=None):
     ap=argparse.ArgumentParser(description="AEGIS v2.0 operator-owned typed assessment orchestration")
     for name in ("manifest","signature","trust","state-root","assessment-policy"):
         ap.add_argument("--"+name,required=True)
-    ap.add_argument("action",choices=("create","snapshot","advance","run"))
+    ap.add_argument("action",choices=("create","snapshot","advance","run","abandon"))
     ap.add_argument("--assessment-id")
     ap.add_argument("--request-id")
     ap.add_argument("--max-actions",type=int,default=12)
+    ap.add_argument("--reason-code")
     a=ap.parse_args(argv)
     try:
         engine=IntegratedAssessment(a.manifest,a.signature,a.trust,a.state_root,a.assessment_policy)
@@ -483,8 +616,10 @@ def main(argv=None):
             result=engine.snapshot(a.assessment_id)
         elif a.action=="advance" and a.assessment_id and not a.request_id:
             result=engine.advance(a.assessment_id)
-        elif a.action=="run" and a.assessment_id and not a.request_id:
+        elif a.action=="run" and a.assessment_id and not a.request_id and not a.reason_code:
             result=engine.run(a.assessment_id,a.max_actions)
+        elif a.action=="abandon" and a.assessment_id and not a.request_id and a.reason_code:
+            result=engine.abandon(a.assessment_id,a.reason_code)
         else:
             deny("invalid operator-only assessment action")
         print(json.dumps(result,sort_keys=True,separators=(",", ":")))

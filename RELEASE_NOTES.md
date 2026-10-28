@@ -79,3 +79,7 @@ See `V1_9_INVESTIGATION.md` and `tests/test_v19_evidence.py`.
 ## v2.0 development: integrated operator assessment
 
 Introduces a bounded, signed-scope, operator-owned orchestration ledger for fixed source review, OSV intelligence, pinned local contract checks, metadata HTTP, reports, investigation and acknowledged local notifications. Real namespace tests, replay-safe completion and fail-closed interrupted-operation recovery are required before release. This is **not** a v2.0 release or a new unrestricted autonomous execution API. Cloudflare audit-methodology orchestration remains planned for v2.1.
+
+## v2.0 bounded end-to-end acceptance candidate (not a production release)
+
+Added short-lived independently signed agent delegations, a provider-neutral strict JSON model adapter, cross-UID Unix control tests, referenced input digest pinning, imported reviewed report revisions, separately authorized synthetic remediation retests, and an auditable terminal abandonment path. All previously signed scope, worker isolation, budget and confirmation gates remain. Production deployment and independent security review remain prerequisites to a release tag.
