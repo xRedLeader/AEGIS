@@ -119,7 +119,7 @@ class DelegatedAssessmentService:
         if (set(policy)!=POLICY_FIELDS or policy["version"]!=1 or policy["configured"] is not True or
             not isinstance(policy["allowed_peer_uids"],list) or
             not 1<=len(policy["allowed_peer_uids"])<=8 or
-            any(type(x) is not int or not 0<=x<2**31 for x in policy["allowed_peer_uids"]) or
+            any(type(x) is not int or not 0<x<2**31 for x in policy["allowed_peer_uids"]) or
             len(set(policy["allowed_peer_uids"]))!=len(policy["allowed_peer_uids"]) or
             (policy["shared_gid"] is not None and (type(policy["shared_gid"]) is not int or not 0<=policy["shared_gid"]<2**31)) or
             not isinstance(policy["allowed_engagement_ids"],list) or
@@ -140,7 +140,7 @@ class DelegatedAssessmentService:
     def _authenticate(self, envelope: bytes, peer_uid: int):
         info,assessment_policy,assessment_sha=self.controller._admit()
         policy,key,_=self._policy(info)
-        if peer_uid not in policy["allowed_peer_uids"]: deny("delegate OS peer identity denied")
+        if peer_uid==0 or peer_uid not in policy["allowed_peer_uids"]: deny("delegate OS peer identity denied")
         envelope=_decode(envelope,MAX_ENVELOPE)
         if set(envelope)!={"grant_b64","grant_signature_b64","request_b64","request_signature_b64"}:
             deny("invalid delegated envelope shape")
@@ -248,6 +248,8 @@ class DelegatedAssessmentService:
         return self.handle(data[:-1],uid)
 
     def serve(self, *, stop_event=None):
+        if os.geteuid()==0:
+            deny("delegated assessment service must run as non-root")
         info,_,_=self.controller._admit()
         policy,_,path=self._policy(info)
         with open_directory_nofollow(path.parent) as fd:
