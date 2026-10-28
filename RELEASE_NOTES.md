@@ -1,3 +1,7 @@
+## v1.9 investigation planner — development candidate
+
+Operator-side deterministic bounded plans derived only from completed private v1.8 packages; immutable evidence and policy pinning; explicit local replay allowlists; verified shared-asset hypotheses remain unverified; persistent fenced leases and audit results; operator-only manual review/retest checkpoints. See `V1_9_INVESTIGATION.md`. No release tag or production deployment claim.
+
 ## v1.8 development — first reporting and local-notification increment (not tagged)
 
 - Explicit v2 canonical findings schema; no severity for unverified/rejected cases. Legacy v1 schema preserved.

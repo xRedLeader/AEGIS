@@ -22,7 +22,7 @@ jobs:
       - name: Unprivileged policy and schema tests
         env:
           PYTHONPATH: tests
-        run: .venv/bin/python -m unittest test_preflight test_report_schema test_egress.BrokerInputTests test_credentials test_operator_service test_v18_reporting -v
+        run: .venv/bin/python -m unittest test_preflight test_report_schema test_egress.BrokerInputTests test_credentials test_operator_service test_v18_reporting test_v19_investigation.PlannerTests -v
   kernel:
     name: Kernel / ${{ matrix.os }} / system Python
     runs-on: ${{ matrix.os }}
