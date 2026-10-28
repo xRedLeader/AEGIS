@@ -55,3 +55,23 @@ Run only from the trusted operator service identity. `aegis_reporting.py` reads 
 ## v1.8 immutable reports and local notification receiver
 
 Operator-only commands: `aegis_reporting.py` generates a canonical per-run report from completed source evidence; `aegis_finding_promotion.py` accepts a dual-signed, proof-hash-bound staging review to produce a new immutable report revision; `aegis_notifications.py` runs a bounded one-shot `--drain 20` or manually delivers a named notice; and `aegis_notification_receiver.py` receives deduplicated metadata under an independent non-root OS identity. The v1.5 operator socket does not automatically offer these functions to agents. See `V1_8_REPORTING.md` for exact arguments, separate reviewer/operator keys, group-only socket access, and failure semantics.
+
+
+## v1.9 operator-only investigation planning (development)
+
+Use only `aegis_investigation.py plan --source-run UUID`, `snapshot --plan-id UUID` or `advance --plan-id UUID` under a protected non-root operator identity. It derives the typed step queue from verified v1.8 reports; the AI cannot define an executable path, target, request, credential, HTTP method, payload, or scope. The only assessment action is explicitly allowlisted v1.7 bounded local evidence replay, independently reserved and audited. An unresolved finding always needs v1.8 dual-signed independent review; a confirmed staging finding needs a newly authorized, independently reviewed retest. The v1.5 operator Unix service does **not** grant this interface to any agent automatically. See `V1_9_INVESTIGATION.md`.
+
+## v1.9 multi-report investigation extension (operator only)
+
+`aegis_investigation_evidence.py` has three strictly typed commands: `attach`
+(admit one completed report with `context` or explicitly bound
+`remediation_retest` purpose), `snapshot` (verify immutable report attachments
+and show only unverified correlations), and `retest` (optionally replay one
+confirmed finding against an explicitly approved new bounded-fuzz assessment).
+It uses the original investigation plan ID and protected operator policy. All
+new retest executions pass through the same v1.7 fresh Linux sandbox and
+independent signed runtime/evidence budgets. Neither `aegis_investigation.py
+run` nor the v1.5 operator socket can invoke this extension implicitly. No
+model-facing retest delegate, policy write, credential broker, arbitrary
+shell/network command or deployed-exploit confirmation is added.
+See `V1_9_INVESTIGATION.md` for exact command examples and threat boundaries.

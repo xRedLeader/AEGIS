@@ -1,3 +1,7 @@
+## v1.9 investigation planner — development candidate
+
+Operator-side deterministic bounded plans derived only from completed private v1.8 packages; immutable evidence and policy pinning; explicit local replay allowlists; verified shared-asset hypotheses remain unverified; persistent fenced leases and audit results; operator-only manual review/retest checkpoints. See `V1_9_INVESTIGATION.md`. No release tag or production deployment claim.
+
 ## v1.8 development — first reporting and local-notification increment (not tagged)
 
 - Explicit v2 canonical findings schema; no severity for unverified/rejected cases. Legacy v1 schema preserved.
@@ -59,3 +63,15 @@ Added operator-pinned `json_resource_access_v1` and `versioned_cas_v1` alongside
 ## v1.8 development (unreleased)
 
 Added evidence-bound canonical findings v2, operator-reviewed dual-signed staging finding promotion with retained proof bytes and immutable reviewed revisions, deterministic remediation reports, complete package integrity validation before local notification delivery, fenced/backoff SQLite outbox with bounded drain, and a separate durable Unix receiver using SO_PEERCRED, idempotency and commit-before-ack. This implementation does not offer production email/webhook delivery or automatic exploit confirmation. See `V1_8_REPORTING.md` for scope and release gates.
+
+
+## v1.9 extended investigation evidence (development, not tagged)
+
+Adds `aegis_investigation_evidence.py`: up to eight completed, source-pinned
+assessment attachments per investigation; deterministic and explicitly
+unverified cross-run asset correlation; separately authorized, lease-fenced
+synthetic remediation observations using v1.7's existing offline worker and
+persistent budgets. Neither zero leads nor a successful local replay resolves
+a production finding or operator review checkpoint. A genuinely fixed deployed
+system remains a separate independent human/security-review determination.
+See `V1_9_INVESTIGATION.md` and `tests/test_v19_evidence.py`.

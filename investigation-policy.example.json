@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "configured": false,
+  "engagement_ids": [],
+  "max_steps": 24,
+  "max_attempts": 2,
+  "lease_seconds": 90,
+  "allow_local_replay": false,
+  "replay_targets": {}
+}

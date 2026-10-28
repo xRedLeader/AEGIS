@@ -71,3 +71,27 @@ The operator-side report generator reads only completed private source artifacts
 ## v1.8 operator-side reporting/notification boundaries
 
 The review and notification components are trusted operator-installed control-plane code only. Original static and synthetic assessment outputs can generate *unverified* findings, never confirmed severity. Confirmations require a bounded external staging proof countersigned by distinct operator and verifier Ed25519 keys, with the proof bytes retained inside an immutable SHA-256-addressed report revision. Canonical JSON, deterministic Markdown and every retained proof are verified before delivery. Sender leases have random attempt-specific fencing tokens, expiry and bounded retry, with a receiver under a separate approved Linux UID and a durable idempotent SQLite store. The metadata acknowledgment denotes local receipt, not off-host message delivery. Unreviewed models, scanners, source repositories and sandbox workers cannot sign reviews, mutate reports, or configure a recipient. Protected key custody, deployment OS/group setup and independent security assessment remain deployment responsibilities.
+
+
+## v1.9 investigation orchestration
+
+The deterministic planner is trusted operator code, not an agent-owned executor. A canonical private operator policy, signed engagement scope and latest protected v1.8 report/ledger constrain its actions. Every local retest calls the existing kernel-confined `AegisFuzzSupervisor` under separate signed budgets, never a model-provided command. Durable random lease tokens fence stale/crashed workers; current policy, source revision and emergency stop are checked again before accepting step results. Correlated findings never become verified exploit chains and no autonomous confirmation/remediation authority is introduced. The trusted host/DB remains outside the compromised-worker boundary.
+
+
+## v1.9 cross-run evidence and retest boundary
+
+Additional reported source runs can enter a plan only through the protected
+operator-controlled `aegis_investigation_evidence.py` extension. Each source
+is a completed same-engagement v1.8 report with verified package bytes, proof
+files, canonical rendering, hash-audit ledger, and source SHA-256. Attachments
+are append-only and pinned to exact report revisions; a later revision
+invalidates the evidence view until an operator explicitly creates new work.
+Cross-report associations are bounded asset-name coincidences, never verified
+transitions. A remediation observation requires an original dual-signed
+confirmed finding, a new source pinned to the same local callable and operator
+policy, an explicit per-run v1.7 authorization, and a separately billed
+sandbox replay when a mismatch candidate exists. Fenced retest leases and
+recovery cannot bypass stop/revocation or convert a local negative result into
+an independently verified production fix. This is **not** an agent tool and
+must not be exposed through the credential-control Unix socket or any
+unrestricted shell bridge.
