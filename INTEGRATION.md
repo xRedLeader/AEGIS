@@ -106,3 +106,19 @@ step may consume its `scanner-import.json` output. The action does not execute a
 scanner or expand signed scope. See [the admission contract](SCANNER_ADMISSION.md).
 The [release collector](RELEASE_EVIDENCE.md) reconciles exact-commit artifacts
 without creating runtime evidence or granting production approval.
+
+The fixed `scanner_execute` action takes `seconds` and a protected
+`scanner_execution_policy`; `staging_dast` takes `seconds`, `staging_profile`
+and `staging_signature`. The controller pins these files into its plan identity.
+Changing a profile or signature invalidates that plan. The model can propose
+only the next named step, and cannot supply executable paths, commands, targets,
+credentials, templates or flags. Both actions enforce the workflow's 2–30 second
+execution ceiling before launching a scanner; source profiles must also match
+the workflow repository.
+
+Successful execution must complete governed admission before a following
+`report` step may consume `scanner-import.json`. The workflow records both the
+execution and admitted-evidence run IDs. Missing admission or an interrupted
+action requires operator reconciliation, with no automatic rerun. These reports
+remain unverified leads. The separate signed staging profile also requires
+`controlled_http_testing`; see [the restricted staging boundary](STAGING_DAST_BOUNDARY.md).

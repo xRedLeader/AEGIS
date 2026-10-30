@@ -246,7 +246,10 @@ def install(cfg, source):
             path.parent.mkdir(parents=True,exist_ok=True)
             atomic_file(path,raw,0o444)
     mkdir(cfg["policy_root"])
-    for role in ("operator","agent","receiver"):mkdir(Path(cfg["policy_root"])/role,mode=0o711)
+    # The no-follow reader opens directories read-only as well as traversing
+    # them. Grant that capability only to the selected role's private group.
+    for role in ("operator","agent","receiver"):
+        mkdir(Path(cfg["policy_root"])/role,gid=cfg["accounts"][role]["gid"],mode=0o550)
     marker=Path(cfg["policy_root"])/"enabled"
     if marker.exists() or marker.is_symlink():
         require(marker.is_file() and not marker.is_symlink() and marker.stat().st_uid==0,"unsafe enable marker")

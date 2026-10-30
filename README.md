@@ -36,10 +36,17 @@ reviewer or actual deployment-host fields.
 The [detector roadmap](https://github.com/xRedLeader/AEGIS/issues/10) adds measured
 [rule coverage](DETECTOR_COVERAGE.md), broader [dependency inventory](DEPENDENCY_COVERAGE.md),
 [scanner evidence admission](SCANNER_ADMISSION.md), a protected
-[provider runner](PROVIDER_RUNNER.md), deployment packaging and release-evidence
+[provider runner](PROVIDER_RUNNER.md), [Ubuntu deployment packaging](deployment/README.md) and release-evidence
 reconciliation. Consult each guide for its exact supported formats and remaining
 validation. Optional live Claude testing and accountable pilot sign-off remain
 separate from offline regression tests.
+
+[Governed offline execution](SCANNER_EXECUTION.md) supports pinned Semgrep-core,
+Gitleaks and selected-advisory Trivy SBOM profiles. The separate signed
+[Nuclei staging profile](STAGING_DAST_BOUNDARY.md) permits bounded anonymous
+HTTP GET/HEAD requests through the trusted request broker. Each guide lists
+its restricted configuration, unsupported features and required native checks.
+Execution and import results remain unverified leads.
 
 The workflow's completed status means its configured local operations finished.
 Finding confirmation, deployed impact and remediation retain their independent

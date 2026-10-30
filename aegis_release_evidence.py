@@ -17,6 +17,8 @@ from aegis_supervisor import ExecutionDenied, open_directory_nofollow, private_d
 
 SIGNOFF_CONTEXT = b"AEGIS-RELEASE-SIGNOFF-v1\x00"
 MACHINE_GATES = frozenset({"ci_ubuntu_22_04", "ci_ubuntu_24_04", "ci_agent_delegation",
+    "ci_native_scanners_22_04", "ci_native_scanners_24_04",
+    "ci_packaged_services_22_04", "ci_packaged_services_24_04",
     "ci_notification_receiver", "ci_source_integrity", "installed_host", "staging_proof",
     "recovery_drills", "delivery_drills"})
 ROLES = frozenset({"independent_reviewer", "signing_key_custodian", "off_host_custodian", "release_owner"})
@@ -131,7 +133,8 @@ def collect(bundle_root, source_root, candidate, trust_path, *, now=None):
             private_directory(trust_root)
             trust = strict_json(read_relative(trust_root, Path(trust_path).name, 32768))
             fields(trust, {"schema_version", "role_keys", "checkpoint_key"})
-            require(trust["schema_version"] == 1 and isinstance(trust["role_keys"], dict) and set(trust["role_keys"]) <= ROLES,
+            require(type(trust["schema_version"]) is int and trust["schema_version"] == 1 and
+                    isinstance(trust["role_keys"], dict) and set(trust["role_keys"]) <= ROLES,
                     "invalid independently selected release trust")
             def checkpoint():
                 fields(bundle["checkpoint"], {"record", "ledger"})
@@ -153,12 +156,14 @@ def collect(bundle_root, source_root, candidate, trust_path, *, now=None):
                     payload = envelope["payload"]
                     fields(payload, {"schema_version", "candidate_sha", "role", "accountable_identity", "observed_at_utc", "decision", "evidence_sha256"})
                     role = payload["role"]
-                    require(payload["schema_version"] == 1 and payload["candidate_sha"] == candidate and role in ROLES and
+                    require(type(payload["schema_version"]) is int and payload["schema_version"] == 1 and
+                            payload["candidate_sha"] == candidate and role in ROLES and
                             role not in accepted_roles and payload["decision"] == "accepted", "signoff is not an accepted exact-candidate decision")
                     text(payload["accountable_identity"], 128)
                     observed_time(payload["observed_at_utc"], bundle["max_age_seconds"], now)
                     expected = digest({"observations": observations, "checkpoint": bundle["checkpoint"],
-                                       "source_manifest_sha256": bundle["source_manifest_sha256"]})
+                                       "source_manifest_sha256": bundle["source_manifest_sha256"],
+                                       "created_at_utc": bundle["created_at_utc"], "max_age_seconds": bundle["max_age_seconds"]})
                     require(payload["evidence_sha256"] == expected, "signoff refers to different evidence")
                     signed(reference(trust_root, trust["role_keys"][role]), bytes.fromhex(envelope["signature_hex"]), SIGNOFF_CONTEXT, payload)
                     accepted_roles.append(role)

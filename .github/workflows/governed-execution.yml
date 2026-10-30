@@ -1,0 +1,66 @@
+name: Governed scanner execution
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-profiles:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source and prepare test identity
+        run: |
+          python3 aegis_source_integrity.py
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-venv libseccomp2 apparmor apparmor-utils gcc libc6-dev
+          sudo useradd --system --uid 58521 --user-group --no-create-home --shell /usr/sbin/nologin aegis-native-test
+          sudo python3 -m venv /srv/aegis-native-runtime
+          sudo /srv/aegis-native-runtime/bin/pip install --disable-pip-version-check -r deployment/requirements.lock
+          sudo /srv/aegis-native-runtime/bin/pip uninstall -y setuptools
+          if [[ "$(lsb_release -rs)" == "24.04" ]]; then
+            sudo install -m 0644 deployment/apparmor/aegis-supervisor /etc/apparmor.d/aegis-native-test
+            sudo apparmor_parser -r /etc/apparmor.d/aegis-native-test
+          fi
+      - name: Explicit online tool and vulnerability DB preparation
+        env:
+          AEGIS_TEST_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,AEGIS_TEST_COMMIT /usr/bin/python3 tests/prepare_scanner_execution_ci.py | tee native-preparation.json
+      - name: Real offline profiles and hostile recovery drills
+        working-directory: /srv/aegis-native-source
+        run: |
+          properties=(--property=User=aegis-native-test --property=Group=aegis-native-test --property=MemoryMax=1024M --property=TasksMax=96 --property=CPUQuota=100% --property=NoNewPrivileges=yes --property=PrivateTmp=yes --property=ProtectSystem=strict --property=MemoryAccounting=yes)
+          if [[ "$(lsb_release -rs)" == "24.04" ]]; then
+            properties+=(--property=AppArmorProfile=aegis-supervisor)
+          fi
+          sudo systemd-run --unit=aegis-native-acceptance --wait --pipe "${properties[@]}" --working-directory=/srv/aegis-native-source --setenv=PYTHONDONTWRITEBYTECODE=1 /srv/aegis-native-runtime/bin/python tests/native_profile_acceptance.py --tools /srv/aegis-native-tools 2> "$GITHUB_WORKSPACE/native-resources.log" | tee "$GITHUB_WORKSPACE/native-profiles.json"
+      - name: Separately scoped staging broker and hostile scanner tests
+        working-directory: /srv/aegis-native-source
+        run: |
+          run=(sudo runuser -u aegis-native-test -- env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/srv/aegis-native-source:/srv/aegis-native-source/tests AEGIS_TEST_NUCLEI=/srv/aegis-native-tools/nuclei /srv/aegis-native-runtime/bin/python)
+          if [[ "$(lsb_release -rs)" == "24.04" ]]; then
+            run=(sudo aa-exec -p aegis-supervisor -- runuser -u aegis-native-test -- env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/srv/aegis-native-source:/srv/aegis-native-source/tests AEGIS_TEST_NUCLEI=/srv/aegis-native-tools/nuclei /srv/aegis-native-runtime/bin/python)
+          fi
+          "${run[@]}" -m unittest test_staging_execution.StagingBoundaryUnitTests staging_execution_acceptance.StagingKernelTests -v 2>&1 | tee "$GITHUB_WORKSPACE/native-staging.log"
+      - name: Retain exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-scanners-${{ matrix.os }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            native-*.json
+            native-*.log
+          retention-days: 30
+          if-no-files-found: warn

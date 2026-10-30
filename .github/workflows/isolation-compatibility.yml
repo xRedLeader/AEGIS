@@ -24,7 +24,7 @@ jobs:
       - name: Unprivileged policy and schema tests
         env:
           PYTHONPATH: tests
-        run: .venv/bin/python -m unittest test_preflight test_report_schema test_egress.BrokerInputTests test_credentials test_operator_service test_v18_reporting test_v19_investigation.PlannerTests test_v19_evidence.MultiRunTests test_v21_source_audit test_detector_coverage test_dependency_inventory test_provider_runner test_scanner_admission test_extended_scanner_adapters test_source_scanners test_release_evidence test_deployment_package -v
+        run: .venv/bin/python -m unittest test_preflight test_report_schema test_egress.BrokerInputTests test_credentials test_operator_service test_v18_reporting test_v19_investigation.PlannerTests test_v19_evidence.MultiRunTests test_v21_source_audit test_detector_coverage test_dependency_inventory test_provider_runner test_scanner_admission test_extended_scanner_adapters test_source_scanners test_release_evidence test_deployment_package test_git_evidence test_scanner_execution test_semgrep_execution test_scanner_orchestration test_staging_execution -v
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

@@ -4,8 +4,10 @@
 does not run a scanner, build source, install dependencies, pull an image, query
 a vulnerability service, validate a credential or contact a target. The existing
 independent verifier/operator staging-proof path remains necessary to confirm a
-finding. A duplicate import returns its original run; repeated scanner output is
-not independent corroboration.
+finding. An exact repeat of the full attestation and verified provenance returns
+its original run. New observation times, database identities or signing identities
+are retained separately even when the report bytes are unchanged. Finding IDs
+stay stable, and repeated scanner output is not independent corroboration.
 
 Run as the protected non-root Linux operator identity, with existing
 `AEGIS_STATE_ROOT` and `AEGIS_TRUST_POLICY`:
@@ -71,6 +73,8 @@ a security clearance. Source, dependency, secret and staging observations all
 remain `needs_validation`, without severity, impact or an automatic remediation
 claim. Stable finding identities bind the engagement, selected input and
 structural observation; every separately admitted import retains its provenance.
+Report and database freshness are rechecked throughout admission and after acquiring
+the database write lock, before evidence is durably accepted.
 
 The adversarial regression suite covers source/report/config tampering, replay,
 duplicate observations, stale/unsupported schemas, forged provenance, signed CI

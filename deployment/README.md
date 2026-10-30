@@ -80,6 +80,9 @@ Provision each role's files into its root-owned policy directory, owned by that
 role's UID/GID with mode `0400`. Keep signing authority outside the untrusted
 adapter and outside assessed repositories. Paths and engagement IDs below must
 agree with the selected installation configuration and independently signed scope.
+The role directories themselves are root-owned, use that role's private group,
+and have mode `0550`; this permits protected directory reads without exposing
+another role's files or granting directory writes.
 
 | Role directory | Required files |
 | --- | --- |

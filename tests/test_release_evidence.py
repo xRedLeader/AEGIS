@@ -1,5 +1,5 @@
 """Release reconciliation never manufactures host evidence or human acceptance."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -95,6 +95,18 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.manifest["candidate_sha"] = "0"*40; self.persist()
         with self.assertRaises(ExecutionDenied): self.collect()
 
+    def test_native_scanner_and_packaged_service_jobs_are_required(self):
+        original = list(self.manifest["observations"])
+        for kind in ("ci_native_scanners_22_04", "ci_native_scanners_24_04",
+                     "ci_packaged_services_22_04", "ci_packaged_services_24_04"):
+            with self.subTest(kind=kind):
+                self.manifest["observations"] = [ref for ref in original
+                    if json.loads((self.bundle/ref["path"]).read_bytes())["kind"] != kind]
+                self.persist()
+                result = self.collect()
+                self.assertFalse(result["machine_evidence_complete"])
+                self.assertIn({"check": kind, "result": "MISSING_INVALID_OR_STALE"}, result["checks"])
+
     def test_claimed_counts_cannot_override_retained_regression_output(self):
         for index, ref in enumerate(self.manifest["observations"]):
             record = json.loads((self.bundle/ref["path"]).read_bytes())
@@ -125,18 +137,55 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.assertFalse(self.collect()["machine_evidence_complete"])
         self.assertFalse((self.bundle/"ledger.json").exists())
 
-    def test_pinned_signatures_are_evidence_not_independent_real_world_approval(self):
+    def sign_all_roles(self, schema_version=1):
         observations = {json.loads((self.bundle/ref["path"]).read_bytes())["kind"]:ref["sha256"] for ref in self.manifest["observations"]}
         evidence = digest({"observations": observations, "checkpoint": self.manifest["checkpoint"],
-                           "source_manifest_sha256": self.manifest["source_manifest_sha256"]})
+                           "source_manifest_sha256": self.manifest["source_manifest_sha256"],
+                           "created_at_utc": self.manifest["created_at_utc"], "max_age_seconds": self.manifest["max_age_seconds"]})
         for role in ROLES:
             self.trust["role_keys"][role] = self.trust["checkpoint_key"]
-            payload = {"schema_version":1, "candidate_sha":self.candidate, "role":role,
+            payload = {"schema_version":schema_version, "candidate_sha":self.candidate, "role":role,
                 "accountable_identity":"Synthetic fixture only", "observed_at_utc":self.stamp,
                 "decision":"accepted", "evidence_sha256":evidence}
             envelope = {"payload":payload,"signature_hex":self.key.sign(SIGNOFF_CONTEXT+canonical(payload)).hex()}
             self.manifest["signoffs"].append(self.save(self.bundle, role+".json", canonical(envelope)))
-        self.persist(); result = self.collect()
+        self.persist()
+
+    def test_pinned_signatures_are_evidence_not_independent_real_world_approval(self):
+        self.sign_all_roles()
+        result = self.collect()
         self.assertEqual(result["pending_roles"], [])
         self.assertEqual(result["status"], "NOT_PRODUCTION_APPROVED")
         self.assertIn("reviewer independence", result["note"])
+
+    def test_unsigned_freshness_changes_do_not_reuse_old_signatures(self):
+        self.sign_all_roles()
+        original = {key:self.manifest[key] for key in ("created_at_utc","max_age_seconds")}
+        signatures = [reference["sha256"] for reference in self.manifest["signoffs"]]
+        self.now += timedelta(seconds=1)
+        for key,value in (("created_at_utc",self.now.strftime("%Y-%m-%dT%H:%M:%SZ")),
+                          ("max_age_seconds",original["max_age_seconds"]+1)):
+            with self.subTest(field=key):
+                self.manifest.update(original);self.manifest[key]=value;self.persist()
+                result=self.collect()
+                self.assertTrue(result["machine_evidence_complete"])
+                self.assertEqual(set(result["pending_roles"]),ROLES)
+                self.assertEqual(result["signed_roles"],[])
+        self.manifest.update(original);self.persist()
+        self.now += timedelta(hours=2)
+        with self.assertRaises(ExecutionDenied):self.collect()
+        self.manifest.update(created_at_utc=self.now.strftime("%Y-%m-%dT%H:%M:%SZ"),max_age_seconds=7202);self.persist()
+        result=self.collect()
+        self.assertTrue(result["machine_evidence_complete"])
+        self.assertEqual([reference["sha256"] for reference in self.manifest["signoffs"]],signatures)
+        self.assertEqual(set(result["pending_roles"]),ROLES)
+        self.assertEqual(result["signed_roles"],[])
+        self.assertEqual(result["status"],"NOT_PRODUCTION_APPROVED")
+
+    def test_boolean_schema_versions_fail_closed(self):
+        self.sign_all_roles(schema_version=True)
+        result=self.collect()
+        self.assertEqual(set(result["pending_roles"]),ROLES)
+        self.assertEqual(result["signed_roles"],[])
+        self.trust["schema_version"]=True;self.persist()
+        with self.assertRaises(ExecutionDenied):self.collect()

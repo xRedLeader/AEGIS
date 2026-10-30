@@ -1,5 +1,6 @@
 """Offline imports bind independently selected source and never retain vendor prose."""
 import copy
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
@@ -12,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from aegis_audit_contract import canonical, digest
-from aegis_scanner_contract import ATTESTATION_CONTEXT, MAX_INPUT, attestation, parse_report, strict_json
+from aegis_scanner_contract import ATTESTATION_CONTEXT, MAX_INPUT, attestation, parse_report, report_projection, strict_json
 from aegis_scanner_import import ScannerImportSupervisor, retained_import, selected_input
 from aegis_supervisor import ExecutionDenied, operator_stop
 from test_v18_reporting import ReportFixture
@@ -83,6 +84,63 @@ class ScannerAdmissionTests(ReportFixture):
         info, _ = self.importer._guard()
         self.assertEqual(json.loads(retained_import(self.importer, info, first["run_id"]))["duplicates_removed"], 1)
 
+    def test_new_database_attestation_retained_without_new_finding_or_corroboration(self):
+        first=self.admit()
+        info,_=self.importer._guard()
+        original=retained_import(self.importer,info,first["run_id"])
+        self.admission["database"]={"sha256":"a"*64,"built_at_utc":datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),"max_age_seconds":3600}
+        self.save_admission()
+        second=self.admit();repeat=self.admit()
+        changed=retained_import(self.importer,info,second["run_id"])
+        self.assertNotEqual(first["run_id"],second["run_id"])
+        self.assertEqual(second["run_id"],repeat["run_id"])
+        self.assertIsNone(json.loads(original)["database"])
+        self.assertEqual(json.loads(changed)["database"],self.admission["database"])
+        self.assertFalse(json.loads(changed)["independent_corroboration"])
+        projections=[report_projection(raw,info["engagement_id"],run,self.admission["observed_at_utc"])
+                     for raw,run in ((original,first["run_id"]),(changed,second["run_id"]))]
+        self.assertEqual([f["id"] for f in projections[0]["findings"]],[f["id"] for f in projections[1]["findings"]])
+
+    def test_report_and_database_expiry_during_admission_fail_before_acceptance(self):
+        import aegis_scanner_import
+        baseline=datetime.now(timezone.utc).replace(microsecond=0)
+        original_normalize=aegis_scanner_import.normalize
+        original_database=self.importer._database
+        class Clock(datetime):
+            elapsed=0
+            @classmethod
+            def now(cls,tz=None):return baseline+timedelta(seconds=cls.elapsed)
+        for stage in ("normalization","database_lock"):
+            for expires in ("report","database"):
+                with self.subTest(stage=stage,expires=expires):
+                    Clock.elapsed=0
+                    stamp=baseline.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    self.admission.update(observed_at_utc=stamp,max_age_seconds=1 if expires=="report" else 3600,
+                        database={"sha256":"a"*64,"built_at_utc":stamp,"max_age_seconds":1} if expires=="database" else None)
+                    self.save_admission()
+                    def normalize(*args):
+                        result=original_normalize(*args)
+                        if stage=="normalization":Clock.elapsed=2
+                        return result
+                    @contextmanager
+                    def database():
+                        with original_database() as connection:
+                            class DelayedLock:
+                                admission=False
+                                def execute(self,sql,*args):
+                                    if sql.startswith("CREATE TABLE IF NOT EXISTS scanner_imports"):self.admission=True
+                                    result=connection.execute(sql,*args)
+                                    if stage=="database_lock" and self.admission and sql=="BEGIN IMMEDIATE":Clock.elapsed=2
+                                    return result
+                                def __getattr__(self,name):return getattr(connection,name)
+                            yield DelayedLock()
+                    with patch("aegis_scanner_contract.datetime",Clock),patch("aegis_scanner_import.normalize",side_effect=normalize), \
+                         patch.object(self.importer,"_database",side_effect=database):
+                        with self.assertRaisesRegex(ExecutionDenied,"stale"):
+                            self.admit()
+                    with original_database() as con:
+                        events=[json.loads(row[0]) for row in con.execute("SELECT event FROM audit")]
+                    self.assertFalse(any(e.get("type")=="completed" and e.get("notes","").startswith("scanner-import:") for e in events))
     def test_report_source_configuration_and_retained_artifact_tampering_fail_closed(self):
         good = self.report_path.read_bytes()
         self.report_path.write_bytes(good+b" ")

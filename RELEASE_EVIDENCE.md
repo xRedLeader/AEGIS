@@ -43,7 +43,7 @@ version-1 bundle. It is not actual deployment or CI evidence.
 
 - `schema_version: 1`, `candidate_sha`, `created_at_utc` (UTC seconds),
   `max_age_seconds` (1–2678400), `source_manifest_sha256`.
-- `observations`: at most nine private artifact references. Each reference is
+- `observations`: at most thirteen private artifact references. Each reference is
   `{ "path": "relative/file", "sha256": "64 lowercase hex characters" }`.
 - `checkpoint`: `{ "record": reference, "ledger": reference }`, or `null`
   while missing. The ledger is a read-only export `{ "ledger_id": UUID,
@@ -66,6 +66,8 @@ to the actual retained outputs). Required kinds and details are:
 |---|---|
 | `ci_ubuntu_22_04`, `ci_ubuntu_24_04` | Exact `job_url`, `head_sha`, `conclusion: "success"`, positive integer `tests`, integer `skipped: 0`; retain the complete job log. |
 | `ci_agent_delegation`, `ci_notification_receiver`, `ci_source_integrity` | Exact job URL, head SHA, success conclusion and original output. |
+| `ci_native_scanners_22_04`, `ci_native_scanners_24_04` | Exact governed-execution job URL, head SHA, success conclusion, pinned preparation receipts and original offline/staging acceptance and recovery outputs. |
+| `ci_packaged_services_22_04`, `ci_packaged_services_24_04` | Exact installed-services job URL, head SHA, success conclusion and retained package/service evidence. These CI fixtures do not replace `installed_host`. |
 | `installed_host` | `installed_commit`, `host_identity_sha256`, `configuration_sha256`, `dependency_inventory_sha256`, `kernel_acceptance: "PASS"`, `packaged_services: "PASS"`; retain actual service identity, policy/AppArmor, diagnostic and kernel outputs. |
 | `staging_proof` | `engagement_scope_sha256`; `proof_admission`, `forged_proof_rejected`, `remediation_retest` all `"PASS"`; retain independently reviewed proof and separately authorized retest. |
 | `recovery_drills` | Scope hash; `crash`, `expired_lease`, `stop`, `revocation`, `no_silent_rerun`, `audited_abandonment` all `"PASS"`. |
@@ -86,7 +88,11 @@ Each signoff is `{ "payload": ..., "signature_hex": ... }`. Payload fields are
 `schema_version: 1`, `candidate_sha`, `role`, `accountable_identity`,
 `observed_at_utc`, `decision: "accepted"`, and `evidence_sha256`. The last hashes
 canonical JSON of `{ "observations": {kind: record_sha256, ...}, "checkpoint":
-bundle.checkpoint, "source_manifest_sha256": bundle.source_manifest_sha256 }`.
+bundle.checkpoint, "source_manifest_sha256": bundle.source_manifest_sha256,
+"created_at_utc": bundle.created_at_utc, "max_age_seconds": bundle.max_age_seconds }`.
+Changing the bundle creation time or freshness window requires new signatures;
+an unsigned edit cannot renew expired decisions. Older signatures that omitted
+these fields must be replaced. Schema versions must be integer `1`, never boolean.
 Sign canonical payload bytes after domain `AEGIS-RELEASE-SIGNOFF-v1\0` with the
 separately controlled Ed25519 key. A valid signature establishes only that the
 pinned key signed those bytes. It does not prove independence, truthful staging

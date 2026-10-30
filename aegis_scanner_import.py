@@ -230,9 +230,12 @@ class ScannerImportSupervisor(ReportingSupervisor):
                   "dependency_analysis" if policy["input"].get("kind") in {"sbom", "image"} or policy["detector"]["name"] in {"pip-audit", "npm-audit", "trivy", "grype"} else "source_review")
         info, scope, run_id = self.reserve(seconds, method)
         deadline = time.monotonic() + seconds
+        def freshness():
+            validate_policy(policy)
+            require(time.monotonic() < deadline, "scanner admission exceeded reserved runtime")
         def guard():
             self._guard()
-            require(time.monotonic() < deadline, "scanner admission exceeded reserved runtime")
+            freshness()
         try:
             identity, context = selected_input(policy, info, self.state_root, guard, scope)
             provenance = verify_provenance(self, policy, identity, info)
@@ -246,8 +249,7 @@ class ScannerImportSupervisor(ReportingSupervisor):
             else:
                 parsed = parse_report(raw, policy, context)
             normalized = normalize(parsed, policy, context)
-            key = digest([info["engagement_id"], policy["detector"], policy["configuration"]["sha256"],
-                          identity, policy["report_sha256"], provenance["mode"], provenance["producer"]])
+            key = digest([attestation(policy, identity), provenance])
             evidence = {"schema_version": 1, "status": "UNVERIFIED_SCANNER_IMPORT", "engagement_id": info["engagement_id"],
                         "import_id": key, "input_kind": identity["kind"], "input_sha256": digest(identity),
                         "input_identity": identity,
@@ -268,6 +270,7 @@ class ScannerImportSupervisor(ReportingSupervisor):
             with self._database() as con:
                 con.execute("CREATE TABLE IF NOT EXISTS scanner_imports (engagement_id TEXT NOT NULL, import_id TEXT NOT NULL, source_run_id TEXT NOT NULL, PRIMARY KEY(engagement_id,import_id))")
                 con.execute("BEGIN IMMEDIATE")
+                freshness()  # A writer may have delayed lock acquisition; do not open another DB here.
                 old = con.execute("SELECT source_run_id FROM scanner_imports WHERE engagement_id=? AND import_id=?", (info["engagement_id"], key)).fetchone()
                 if old:
                     con.rollback()
@@ -277,6 +280,7 @@ class ScannerImportSupervisor(ReportingSupervisor):
                                      and e.get("engagement_id") == info["engagement_id"]), None)
                     require(previous is None, "scanner import receipt is missing; audited replay denied")
                     self._write_report(info, run_id, encoded, "scanner-import.json")
+                    freshness()
                     con.execute("INSERT INTO scanner_imports VALUES(?,?,?)", (info["engagement_id"], key, run_id))
                     con.execute("UPDATE runs SET status='completed',ended_utc=? WHERE run_id=? AND engagement_id=?",
                                 (datetime.now(timezone.utc).isoformat(), run_id, info["engagement_id"]))

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "configured": false,
+  "engagement_id": "example-engagement-001",
+  "operation_id": "00000000-0000-4000-8000-000000000000",
+  "profile": "gitleaks-dir-v8.24.3",
+  "executable": {
+    "path": "/srv/aegis-scanners/gitleaks",
+    "sha256": "e18325d568268b6efb6cd0cc721f8bea5667f4cd1c8d03618ab61987f41269ad"
+  },
+  "configuration": {
+    "path": "/etc/aegis/operator/gitleaks-rules.toml",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "input": {
+    "kind": "source",
+    "repository": "/srv/aegis-targets/application",
+    "files": {
+      "src/example.py": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "allowed_rule_ids": ["aegis-synthetic-canary"],
+  "seconds": 15
+}
