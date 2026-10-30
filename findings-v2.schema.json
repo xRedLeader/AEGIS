@@ -13,7 +13,7 @@
       "required": ["relative_path", "sha256", "kind"], "properties": {
         "relative_path": {"type": "string", "pattern": "^runs/[0-9a-f-]{36}/[a-z-]+\\.json$"},
         "sha256": {"$ref": "#/$defs/hash"},
-        "kind": {"enum": ["source_review", "bounded_fuzz", "osv_advisory", "source_audit"]}
+        "kind": {"enum": ["source_review", "bounded_fuzz", "osv_advisory", "source_audit", "scanner_import"]}
       }},
     "findings": {"type": "array", "maxItems": 150, "uniqueItems": true, "items": {"$ref": "#/$defs/finding"}},
     "coverage": {"type": "object", "additionalProperties": false,

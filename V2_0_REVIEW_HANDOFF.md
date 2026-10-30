@@ -1,5 +1,9 @@
 # AEGIS v2.0 — review handoff
 
+Historical v2.0 review record. PR #8 and the v2.1 source-research PR #9 are now
+merged. Use [current release evidence](RELEASE_EVIDENCE.md) for a new candidate;
+the commit-specific results below do not accept later code or deployment.
+
 ## Scope and decision
 
 v2.0 implements a fixed, operator-authorized assessment workflow: signed scope,
@@ -7,8 +11,8 @@ bounded source and contract testing, evidence-bound reports, independently signe
 staging review, conservative retests, durable local notifications, audited
 recovery, and signed agent delegation of the exact next authorized step. The
 release decision covers this bounded staging scope. General autonomous hunting
-remains outside this release. Cloudflare methodology integration is planned for
-v2.1.
+remains outside this release. Cloudflare methodology integration subsequently
+merged in v2.1; see [its implemented contract](V2_1_SOURCE_AUDIT.md).
 
 Complete the existing sign-off record in [V2_0_HOST_ACCEPTANCE.md](V2_0_HOST_ACCEPTANCE.md)
 using the inputs below. The code and CI evidence are review inputs; the actual
@@ -17,10 +21,10 @@ their accountable owners' evidence. Release requirements remain defined in
 [V2_0_RELEASE_ACCEPTANCE.md](V2_0_RELEASE_ACCEPTANCE.md) and
 [V2_0_SECURITY_REVIEW.md](V2_0_SECURITY_REVIEW.md).
 
-## Find the current candidate
+## Historical v2.0 candidate references
 
-- [PR #8](https://github.com/xRedLeader/AEGIS/pull/8): current candidate SHA,
-  current acceptance evidence and release decision.
+- [PR #8](https://github.com/xRedLeader/AEGIS/pull/8): historical v2.0 candidate SHA,
+  acceptance evidence and release discussion.
 - [PR commits](https://github.com/xRedLeader/AEGIS/pull/8/commits): changes since
   the previously accepted source.
 - [PR checks](https://github.com/xRedLeader/AEGIS/pull/8/checks): workflow results

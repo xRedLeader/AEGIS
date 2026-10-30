@@ -1,0 +1,278 @@
+{
+  "artifacts": {
+    "codeql_archive_sha256": "e61bc8aa8d86d45acd9d1c36629a12bbfb3365cd07a31666a2ebc91c6a1940b2",
+    "gitleaks_archive_sha256": "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c",
+    "gitleaks_binary_sha256": "e18325d568268b6efb6cd0cc721f8bea5667f4cd1c8d03618ab61987f41269ad"
+  },
+  "capture": "actual unmodified tool exports over synthetic fixtures; not hand-authored scanner output",
+  "captured_at_utc": "2026-10-30T19:21:10.521562+00:00",
+  "commands": [
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/gitleaks",
+        "dir",
+        "--no-banner",
+        "--config",
+        "/tmp/aegis-synthetic-scanners-v1/capture/gitleaks.toml",
+        "--report-format",
+        "json",
+        "--report-path",
+        "/tmp/aegis-synthetic-scanners-v1/capture/reports/gitleaks-current.json",
+        "."
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture/source",
+      "exit_code": 1
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/gitleaks",
+        "dir",
+        "--no-banner",
+        "--redact=100",
+        "--config",
+        "/tmp/aegis-synthetic-scanners-v1/capture/gitleaks.toml",
+        "--report-format",
+        "json",
+        "--report-path",
+        "/tmp/aegis-synthetic-scanners-v1/capture/reports/gitleaks-redacted.json",
+        "."
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture/source",
+      "exit_code": 1
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/gitleaks",
+        "dir",
+        "--no-banner",
+        "--config",
+        "/tmp/aegis-synthetic-scanners-v1/capture/gitleaks.toml",
+        "--report-format",
+        "json",
+        "--report-path",
+        "/tmp/aegis-synthetic-scanners-v1/capture/reports/gitleaks-safe.json",
+        "."
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture/safe-source",
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/gitleaks",
+        "git",
+        "--no-banner",
+        "--log-opts=-n 2 4fff1879e7a7444d41f09ececf7c29646ffc77cf",
+        "--config",
+        "/tmp/aegis-synthetic-scanners-v1/capture/gitleaks.toml",
+        "--report-format",
+        "json",
+        "--report-path",
+        "/tmp/aegis-synthetic-scanners-v1/capture/reports/gitleaks-history.json",
+        "."
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture/history-source",
+      "exit_code": 1
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/venv/bin/semgrep",
+        "scan",
+        "--config",
+        "/tmp/aegis-synthetic-scanners-v1/capture/semgrep.yaml",
+        "--metrics=off",
+        "--disable-version-check",
+        "--no-git-ignore",
+        "--no-rewrite-rule-ids",
+        "--json",
+        "--output",
+        "/tmp/aegis-synthetic-scanners-v1/capture/reports/semgrep.json",
+        "example.js",
+        "typed-example.ts",
+        "Example.cs"
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture/source",
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/codeql/codeql",
+        "database",
+        "create",
+        "/tmp/aegis-synthetic-scanners-v1/capture/db-distinct-javascript",
+        "--language=javascript",
+        "--build-mode=none",
+        "--source-root=/tmp/aegis-synthetic-scanners-v1/capture/source",
+        "--threads=2",
+        "--ram=2048"
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture",
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/codeql/codeql",
+        "database",
+        "analyze",
+        "/tmp/aegis-synthetic-scanners-v1/capture/db-distinct-javascript",
+        "/tmp/aegis-synthetic-scanners-v1/capture/queries/javascript",
+        "--format=sarifv2.1.0",
+        "--output=/tmp/aegis-synthetic-scanners-v1/capture/reports/codeql-javascript.sarif",
+        "--threads=2",
+        "--ram=2048"
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture",
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/codeql/codeql",
+        "database",
+        "create",
+        "/tmp/aegis-synthetic-scanners-v1/capture/db-distinct-csharp",
+        "--language=csharp",
+        "--build-mode=none",
+        "--source-root=/tmp/aegis-synthetic-scanners-v1/capture/source",
+        "--threads=2",
+        "--ram=2048"
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture",
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/codeql/codeql",
+        "database",
+        "analyze",
+        "/tmp/aegis-synthetic-scanners-v1/capture/db-distinct-csharp",
+        "/tmp/aegis-synthetic-scanners-v1/capture/queries/csharp",
+        "--format=sarifv2.1.0",
+        "--output=/tmp/aegis-synthetic-scanners-v1/capture/reports/codeql-csharp.sarif",
+        "--threads=2",
+        "--ram=2048"
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture",
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/venv/bin/semgrep",
+        "scan",
+        "--config",
+        "/tmp/aegis-synthetic-scanners-v1/capture/semgrep.yaml",
+        "--metrics=off",
+        "--disable-version-check",
+        "--no-git-ignore",
+        "--no-rewrite-rule-ids",
+        "--json",
+        "--output",
+        "/tmp/aegis-synthetic-scanners-v1/capture/reports/semgrep-safe.json",
+        "example.js",
+        "typed-example.ts",
+        "Example.cs"
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture/safe-source",
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/codeql/codeql",
+        "database",
+        "create",
+        "/tmp/aegis-synthetic-scanners-v1/capture/db-distinct-safe-javascript",
+        "--language=javascript",
+        "--build-mode=none",
+        "--source-root=/tmp/aegis-synthetic-scanners-v1/capture/safe-source",
+        "--threads=2",
+        "--ram=2048"
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture",
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/codeql/codeql",
+        "database",
+        "analyze",
+        "/tmp/aegis-synthetic-scanners-v1/capture/db-distinct-safe-javascript",
+        "/tmp/aegis-synthetic-scanners-v1/capture/queries/javascript",
+        "--format=sarifv2.1.0",
+        "--output=/tmp/aegis-synthetic-scanners-v1/capture/reports/codeql-javascript-safe.sarif",
+        "--threads=2",
+        "--ram=2048"
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture",
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/codeql/codeql",
+        "database",
+        "create",
+        "/tmp/aegis-synthetic-scanners-v1/capture/db-distinct-safe-csharp",
+        "--language=csharp",
+        "--build-mode=none",
+        "--source-root=/tmp/aegis-synthetic-scanners-v1/capture/safe-source",
+        "--threads=2",
+        "--ram=2048"
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture",
+      "exit_code": 0
+    },
+    {
+      "argv": [
+        "/tmp/aegis-synthetic-scanners-v1/codeql/codeql",
+        "database",
+        "analyze",
+        "/tmp/aegis-synthetic-scanners-v1/capture/db-distinct-safe-csharp",
+        "/tmp/aegis-synthetic-scanners-v1/capture/queries/csharp",
+        "--format=sarifv2.1.0",
+        "--output=/tmp/aegis-synthetic-scanners-v1/capture/reports/codeql-csharp-safe.sarif",
+        "--threads=2",
+        "--ram=2048"
+      ],
+      "cwd": "/tmp/aegis-synthetic-scanners-v1/capture",
+      "exit_code": 0
+    }
+  ],
+  "files": {
+    "codeql-config-manifest.json": "f1194f7058be1f341daf3a22910e3e68393daec138b3c32579ea8dc4f3b4d93b",
+    "gitleaks.toml": "01c5d421a650a3f1d405eb593eccf8621d9a3fd17c0b4f4bde16fc3b7fa9b1ac",
+    "queries/csharp/codeql-pack.lock.yml": "737f31d5d2154d69dbb67eb3d2b0124ef0d17720a44f760fe75454540ff8e7df",
+    "queries/csharp/process-start.ql": "7655cd62e0b02119740db854e7b73f12d6608e9c4c1d687d79e602402ad68b3f",
+    "queries/csharp/qlpack.yml": "1c982ebf1dc9054eba274e8cee76342a096b59e7a84117d4b873ab97918532d5",
+    "queries/javascript/codeql-pack.lock.yml": "c516c39e941562051652d29d32a7be8535c3223712074d1c73ffd6d3b2cc5e0c",
+    "queries/javascript/dynamic-eval.ql": "0db1e91374a9ac92e18f9ff6a724045b52433ec752d8263f1b6c992a48ab7d63",
+    "queries/javascript/qlpack.yml": "4d3569affe1061d8fe3445acc5cdb816abe0083482f72bfce32471c918f2a7e7",
+    "reports/codeql-csharp-safe.sarif": "aa10285ecbded6d204869c5e0ee39121317c3f6ced94b46b78a2f7f1399057a3",
+    "reports/codeql-csharp.sarif": "49df675d3a386a35fc2c136e7dddbbc8097afd48fb3bd61493369e2d99192488",
+    "reports/codeql-javascript-safe.sarif": "94d28af483a641f5fb951f16943e7a06725e55eb2aa1ed64f90918e9a96624db",
+    "reports/codeql-javascript.sarif": "5e60dcf6414dd3169617a683aaf4455d4fb5ca434a0cf412c8fa53fc87252e76",
+    "reports/gitleaks-current.json": "6a2956ef165d9c4aa0490242124268e57260d59708430b410970d37510b35ab8",
+    "reports/gitleaks-history.json": "dced9147f283dc4b863d4a5b69b38f944f86212621785905311df89f2b18ef65",
+    "reports/gitleaks-redacted.json": "764f630d6838163c82511b50fda0d8b15784373b5ff996a40b6cb6601d8ee41b",
+    "reports/gitleaks-safe.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "reports/semgrep-safe.json": "3c7fdbaef77298847f1981b41af229efe76e8fd090261e6c58f1c8bc6dc87a16",
+    "reports/semgrep.json": "40d59ab0e496207b39ba327c983c538235bde618bc763d5f3a1f51d97e5a04aa",
+    "safe-source/Example.cs": "e7bebfda0d67be58240a8cc1427b4d91edc041aa30e3683afdfe347b435bebde",
+    "safe-source/example.js": "79e204dadfcd3194fb09b13b271dd41206d3ab785e3019fcc4901f58f696c786",
+    "safe-source/secrets-safe.txt": "7baa074b80a614f269446c3aede2a993a94473d79bf3246faffc70360921ac8c",
+    "safe-source/typed-example.ts": "70de0d4df1c135a477b97c9f732144ee25f46b3b024c48feda2fd80b842e1758",
+    "semgrep-requirements.lock.txt": "918885c380ca2cfe04ea0785010e9ef2ba094c7362c1d1d9a0c7adddcdbbcc45",
+    "semgrep.yaml": "dcf08c666b5c50f0894ffe05565875217e2ff21d4d833d2e8bfacbe63e52ad7b",
+    "source/Example.cs": "ce24cb4583702dbda065eba9377b8d9344090600b1dee8377585d75111709a28",
+    "source/example.js": "2189039ac4d5167f8881be67249cc96132555c2ea9bf2b9049a95d51a41780a0",
+    "source/secrets-positive.txt": "349b8ac4b8f515cf9c2d63299e5396b5472351b39c9800e12c05a113d03c3c1a",
+    "source/secrets-safe.txt": "7baa074b80a614f269446c3aede2a993a94473d79bf3246faffc70360921ac8c",
+    "source/typed-example.ts": "01994f5d11269fbfa6c24e68e000985b22214eb2561b9a69aeb41541079f20a4",
+    "synthetic-history.bundle": "392aef24a6c0a757804959276ea91375e5dc3a6b4300764739bdddc87d71b6ac"
+  },
+  "history_revisions": [
+    "43de70119caa6487d3648782a3daf9dc6279c79b",
+    "4fff1879e7a7444d41f09ececf7c29646ffc77cf"
+  ],
+  "versions": {
+    "codeql": "2.23.8",
+    "gitleaks": "8.24.3",
+    "semgrep": "1.125.0"
+  }
+}

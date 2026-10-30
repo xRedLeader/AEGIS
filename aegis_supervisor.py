@@ -179,7 +179,7 @@ class AegisSupervisor:
         if type(evidence_bytes) is not int or not 0 <= evidence_bytes <= 262144:
             deny("invalid bounded evidence reservation")
         info, m = self._guard()
-        if method not in ("source_review", "dependency_analysis", "bounded_fuzzing") or method not in info["approved_methods"]:
+        if method not in ("source_review", "dependency_analysis", "bounded_fuzzing", "controlled_http_testing") or method not in info["approved_methods"]:
             deny(method + " is not authorized")
         if type(seconds) is not int or seconds < 1 or seconds > m["limits"]["max_single_run_minutes"] * 60:
             deny("requested run duration exceeds signed single-run limit")
@@ -249,7 +249,7 @@ class AegisSupervisor:
 
     def _write_report(self, info: dict, run_id: str, payload: bytes,
                       filename: str = "source-review.json") -> str:
-        if filename not in {"source-review.json", "http-result.json", "dependency-inventory.json", "bounded-fuzz.json", "source-audit.json"}:
+        if filename not in {"source-review.json", "http-result.json", "dependency-inventory.json", "bounded-fuzz.json", "source-audit.json", "scanner-import.json"}:
             deny("unsupported evidence artifact filename")
         if len(payload) > (262144 if filename == "source-audit.json" else MAX_RESULT_BYTES):
             deny("worker evidence exceeds reserved byte budget")

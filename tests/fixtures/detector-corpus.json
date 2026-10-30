@@ -1,0 +1,364 @@
+{
+  "schema_version": 1,
+  "engine": "aegis-regex",
+  "engine_version": "2",
+  "cases": [
+    {
+      "id": "py-shell-true-vulnerable",
+      "category": "vulnerable",
+      "filename": "sample.py",
+      "source": "def invoke(command):\n    return subprocess.run(command, shell=True)\n",
+      "expected_rules": [
+        "PY-SHELL-TRUE"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows the shell flag through a variable."
+    },
+    {
+      "id": "py-shell-true-safe_control",
+      "category": "safe_control",
+      "filename": "sample.py",
+      "source": "def invoke(argv):\n    return subprocess.run(argv, shell=False)\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows the shell flag through a variable."
+    },
+    {
+      "id": "py-shell-true-known_false_positive",
+      "category": "known_false_positive",
+      "filename": "sample.py",
+      "source": "# Documentation only: subprocess.run(command, shell=True)\n",
+      "expected_rules": [
+        "PY-SHELL-TRUE"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows the shell flag through a variable."
+    },
+    {
+      "id": "py-shell-true-known_false_negative",
+      "category": "known_false_negative",
+      "filename": "sample.py",
+      "source": "def invoke(command):\n    enabled = True\n    return subprocess.run(command, shell=enabled)\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows the shell flag through a variable."
+    },
+    {
+      "id": "py-pickle-load-vulnerable",
+      "category": "vulnerable",
+      "filename": "sample.py",
+      "source": "def deserialize(untrusted):\n    return pickle.loads(untrusted)\n",
+      "expected_rules": [
+        "PY-PICKLE-LOAD"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows imported aliases."
+    },
+    {
+      "id": "py-pickle-load-safe_control",
+      "category": "safe_control",
+      "filename": "sample.py",
+      "source": "def deserialize(untrusted):\n    return json.loads(untrusted)\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows imported aliases."
+    },
+    {
+      "id": "py-pickle-load-known_false_positive",
+      "category": "known_false_positive",
+      "filename": "sample.py",
+      "source": "# Documentation only: pickle.loads(untrusted)\n",
+      "expected_rules": [
+        "PY-PICKLE-LOAD"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows imported aliases."
+    },
+    {
+      "id": "py-pickle-load-known_false_negative",
+      "category": "known_false_negative",
+      "filename": "sample.py",
+      "source": "from pickle import loads\ndef deserialize(untrusted):\n    return loads(untrusted)\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows imported aliases."
+    },
+    {
+      "id": "py-eval-vulnerable",
+      "category": "vulnerable",
+      "filename": "sample.py",
+      "source": "def expression(untrusted):\n    return eval(untrusted)\n",
+      "expected_rules": [
+        "PY-EVAL"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows callable aliases."
+    },
+    {
+      "id": "py-eval-safe_control",
+      "category": "safe_control",
+      "filename": "sample.py",
+      "source": "def expression(untrusted):\n    return ast.literal_eval(untrusted)\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows callable aliases."
+    },
+    {
+      "id": "py-eval-known_false_positive",
+      "category": "known_false_positive",
+      "filename": "sample.py",
+      "source": "# Documentation only: eval(untrusted)\n",
+      "expected_rules": [
+        "PY-EVAL"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows callable aliases."
+    },
+    {
+      "id": "py-eval-known_false_negative",
+      "category": "known_false_negative",
+      "filename": "sample.py",
+      "source": "def expression(untrusted):\n    evaluate = eval\n    return evaluate(untrusted)\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows callable aliases."
+    },
+    {
+      "id": "py-tls-noverify-vulnerable",
+      "category": "vulnerable",
+      "filename": "sample.py",
+      "source": "def request(url):\n    return requests.get(url, verify=False)\n",
+      "expected_rules": [
+        "PY-TLS-NOVERIFY"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows verification flags through variables."
+    },
+    {
+      "id": "py-tls-noverify-safe_control",
+      "category": "safe_control",
+      "filename": "sample.py",
+      "source": "def request(url):\n    return requests.get(url, verify=True)\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows verification flags through variables."
+    },
+    {
+      "id": "py-tls-noverify-known_false_positive",
+      "category": "known_false_positive",
+      "filename": "sample.py",
+      "source": "# Documentation only: requests.get(url, verify=False)\n",
+      "expected_rules": [
+        "PY-TLS-NOVERIFY"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows verification flags through variables."
+    },
+    {
+      "id": "py-tls-noverify-known_false_negative",
+      "category": "known_false_negative",
+      "filename": "sample.py",
+      "source": "def request(url):\n    enabled = False\n    return requests.get(url, verify=enabled)\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows verification flags through variables."
+    },
+    {
+      "id": "js-tls-noverify-vulnerable",
+      "category": "vulnerable",
+      "filename": "sample.js",
+      "source": "function request(url) { return https.request(url, { rejectUnauthorized: false }); }\n",
+      "expected_rules": [
+        "JS-TLS-NOVERIFY"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows configuration values through variables."
+    },
+    {
+      "id": "js-tls-noverify-safe_control",
+      "category": "safe_control",
+      "filename": "sample.js",
+      "source": "function request(url) { return https.request(url, { rejectUnauthorized: true }); }\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows configuration values through variables."
+    },
+    {
+      "id": "js-tls-noverify-known_false_positive",
+      "category": "known_false_positive",
+      "filename": "sample.js",
+      "source": "// Documentation only: { rejectUnauthorized: false }\n",
+      "expected_rules": [
+        "JS-TLS-NOVERIFY"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows configuration values through variables."
+    },
+    {
+      "id": "js-tls-noverify-known_false_negative",
+      "category": "known_false_negative",
+      "filename": "sample.js",
+      "source": "function request(url) { const enabled = false; return https.request(url, { rejectUnauthorized: enabled }); }\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows configuration values through variables."
+    },
+    {
+      "id": "js-eval-vulnerable",
+      "category": "vulnerable",
+      "filename": "sample.js",
+      "source": "function expression(untrusted) { return eval(untrusted); }\n",
+      "expected_rules": [
+        "JS-EVAL"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows callable aliases."
+    },
+    {
+      "id": "js-eval-safe_control",
+      "category": "safe_control",
+      "filename": "sample.js",
+      "source": "function expression(untrusted) { return JSON.parse(untrusted); }\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows callable aliases."
+    },
+    {
+      "id": "js-eval-known_false_positive",
+      "category": "known_false_positive",
+      "filename": "sample.js",
+      "source": "// Documentation only: eval(untrusted)\n",
+      "expected_rules": [
+        "JS-EVAL"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "The regex neither distinguishes comments nor follows callable aliases."
+    },
+    {
+      "id": "js-eval-known_false_negative",
+      "category": "known_false_negative",
+      "filename": "sample.js",
+      "source": "function expression(untrusted) { const evaluate = eval; return evaluate(untrusted); }\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The regex neither distinguishes comments nor follows callable aliases."
+    },
+    {
+      "id": "js-family-jsx-vulnerable",
+      "category": "vulnerable",
+      "filename": "sample.jsx",
+      "source": "function expression(untrusted) { const options = { rejectUnauthorized: false }; return eval(untrusted); }\n",
+      "expected_rules": [
+        "JS-TLS-NOVERIFY",
+        "JS-EVAL"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "Both advertised JavaScript-family rules apply to this extension."
+    },
+    {
+      "id": "js-family-jsx-safe",
+      "category": "safe_control",
+      "filename": "sample.jsx",
+      "source": "function expression(untrusted) { const options = { rejectUnauthorized: true }; return JSON.parse(untrusted); }\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The corresponding safer spellings do not match either fixed regex."
+    },
+    {
+      "id": "js-family-ts-vulnerable",
+      "category": "vulnerable",
+      "filename": "sample.ts",
+      "source": "function expression(untrusted) { const options = { rejectUnauthorized: false }; return eval(untrusted); }\n",
+      "expected_rules": [
+        "JS-TLS-NOVERIFY",
+        "JS-EVAL"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "Both advertised JavaScript-family rules apply to this extension."
+    },
+    {
+      "id": "js-family-ts-safe",
+      "category": "safe_control",
+      "filename": "sample.ts",
+      "source": "function expression(untrusted) { const options = { rejectUnauthorized: true }; return JSON.parse(untrusted); }\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The corresponding safer spellings do not match either fixed regex."
+    },
+    {
+      "id": "js-family-tsx-vulnerable",
+      "category": "vulnerable",
+      "filename": "sample.tsx",
+      "source": "function expression(untrusted) { const options = { rejectUnauthorized: false }; return eval(untrusted); }\n",
+      "expected_rules": [
+        "JS-TLS-NOVERIFY",
+        "JS-EVAL"
+      ],
+      "expected_assessment": "unverified_leads",
+      "reason": "Both advertised JavaScript-family rules apply to this extension."
+    },
+    {
+      "id": "js-family-tsx-safe",
+      "category": "safe_control",
+      "filename": "sample.tsx",
+      "source": "function expression(untrusted) { const options = { rejectUnauthorized: true }; return JSON.parse(untrusted); }\n",
+      "expected_rules": [],
+      "expected_assessment": "no_leads_in_assessed_files",
+      "reason": "The corresponding safer spellings do not match either fixed regex."
+    },
+    {
+      "id": "unsupported-cs",
+      "category": "unsupported",
+      "filename": "sample.cs",
+      "source": "// eval(untrusted), verify=False, shell=True do not give C# regex coverage.\nclass Example {}\n",
+      "expected_rules": [],
+      "expected_assessment": "unsupported_analysis",
+      "reason": "A recognized source/configuration extension does not create applicable regex rules."
+    },
+    {
+      "id": "unsupported-java",
+      "category": "unsupported",
+      "filename": "sample.java",
+      "source": "// eval(untrusted), verify=False, shell=True do not give Java regex coverage.\nclass Example {}\n",
+      "expected_rules": [],
+      "expected_assessment": "unsupported_analysis",
+      "reason": "A recognized source/configuration extension does not create applicable regex rules."
+    },
+    {
+      "id": "unsupported-go",
+      "category": "unsupported",
+      "filename": "sample.go",
+      "source": "package example\n// eval(untrusted), verify=False, shell=True do not give Go regex coverage.\n",
+      "expected_rules": [],
+      "expected_assessment": "unsupported_analysis",
+      "reason": "A recognized source/configuration extension does not create applicable regex rules."
+    },
+    {
+      "id": "unsupported-yaml",
+      "category": "unsupported",
+      "filename": "sample.yaml",
+      "source": "description: 'eval(untrusted) shell=True verify=False'\n",
+      "expected_rules": [],
+      "expected_assessment": "unsupported_analysis",
+      "reason": "A recognized source/configuration extension does not create applicable regex rules."
+    },
+    {
+      "id": "unsupported-yml",
+      "category": "unsupported",
+      "filename": "sample.yml",
+      "source": "description: 'eval(untrusted) shell=True verify=False'\n",
+      "expected_rules": [],
+      "expected_assessment": "unsupported_analysis",
+      "reason": "A recognized source/configuration extension does not create applicable regex rules."
+    },
+    {
+      "id": "unsupported-json",
+      "category": "unsupported",
+      "filename": "sample.json",
+      "source": "{\"description\":\"eval(untrusted) shell=True verify=False\"}\n",
+      "expected_rules": [],
+      "expected_assessment": "unsupported_analysis",
+      "reason": "A recognized source/configuration extension does not create applicable regex rules."
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+title = "AEGIS synthetic canary only; not a production secret ruleset"
+[[rules]]
+id = "aegis-synthetic-canary"
+description = "Synthetic fixture credential marker"
+regex = '''AEGIS_TEST_SECRET_[A-Z0-9]{32}'''
+keywords = ["AEGIS_TEST_SECRET_"]

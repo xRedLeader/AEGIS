@@ -38,6 +38,7 @@ MODULE = re.compile(r"[A-Za-z0-9_/-]{1,160}\.py\Z")
 ACTION_FIELDS = {
     "source_review": {"seconds"},
     "source_audit": {"seconds", "audit_policy", "audit_bundle"},
+    "scanner_import": {"seconds", "scanner_policy", "scanner_report"},
     "dependency_intelligence": {"seconds", "snapshot", "signature"},
     "local_contract": {"seconds", "module", "seed", "cases", "trials", "fuzz_policy"},
     "http_metadata": {"seconds", "url", "method"},
@@ -49,7 +50,7 @@ ACTION_FIELDS = {
     "notify": {"source", "notification_policy"},
 }
 SOURCES = {
-    "report": {"source_review", "source_audit", "dependency_intelligence", "local_contract"},
+    "report": {"source_review", "source_audit", "scanner_import", "dependency_intelligence", "local_contract"},
     "investigate": {"report", "admit_report"},
     "remediation_retest": {"investigate"},
     "progress_investigation": {"investigate"},
@@ -58,6 +59,7 @@ SOURCES = {
 EVIDENCE_NAMES = {
     "source_review": "source-review.json",
     "source_audit": "source-audit.json",
+    "scanner_import": "scanner-import.json",
     "dependency_intelligence": "advisory-candidates.json",
     "local_contract": "bounded-fuzz.json",
 }
@@ -215,7 +217,7 @@ def _policy(path, info, state):
         seen[entry["id"]] = kind
     references=[]
     for entry in policy["steps"]:
-        for key in ("snapshot", "signature", "fuzz_policy", "investigation_policy", "notification_policy", "audit_policy", "audit_bundle"):
+        for key in ("snapshot", "signature", "fuzz_policy", "investigation_policy", "notification_policy", "audit_policy", "audit_bundle", "scanner_policy", "scanner_report"):
             if key in entry:
                 references.append((entry["id"], key, entry[key],
                                    _pinned_reference(entry[key],info,state)))
@@ -293,6 +295,7 @@ class IntegratedAssessment(AegisSupervisor):
         shape={
             "source_review":{"action","run_id","evidence"},
             "source_audit":{"action","run_id","evidence","research_status"},
+            "scanner_import":{"action","run_id","evidence"},
             "dependency_intelligence":{"action","run_id","evidence","snapshot_sha256"},
             "local_contract":{"action","run_id","evidence"},
             "http_metadata":{"action","request_id","status"},
@@ -454,6 +457,13 @@ class IntegratedAssessment(AegisSupervisor):
         kind=entry["action"]
         args=(self.manifest_path,self.signature_path,self.trust_path,self.state_root)
         repo=Path(policy["repository"])
+        if kind=="scanner_import":
+            from aegis_scanner_import import ScannerImportSupervisor
+            result=ScannerImportSupervisor(*args).admit(Path(entry["scanner_policy"]),
+                Path(entry["scanner_report"]), seconds=entry["seconds"], expected_repository=repo)
+            if result.get("status") not in ("SCANNER_IMPORT_RECORDED","SCANNER_IMPORT_ALREADY_RECORDED"):
+                deny("scanner import not recorded")
+            return {"action":kind,"run_id":result["run_id"],"evidence":"scanner-import.json"}
         if kind=="source_audit":
             from aegis_source_audit import SourceAuditSupervisor
             result=SourceAuditSupervisor(*args).research(Path(entry["audit_policy"]),

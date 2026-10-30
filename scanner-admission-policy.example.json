@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "configured": false,
+  "engagement_id": "example-engagement-001",
+  "detector": {"name": "pip-audit", "version": "2.9.0", "report_schema": "pip-audit-json"},
+  "configuration": {"path": "/protected/scanner-config.json", "sha256": "REPLACE_WITH_EXACT_SHA256"},
+  "report_sha256": "REPLACE_WITH_EXACT_SHA256",
+  "observed_at_utc": "2000-01-01T00:00:00Z",
+  "max_age_seconds": 3600,
+  "input": {"kind": "source", "repository": "/authorized/source", "files": {"requirements.txt": "REPLACE_WITH_EXACT_SHA256"}},
+  "allowed_rule_ids": [],
+  "database": null,
+  "provenance": {"mode": "operator_attested_external", "producer": "operator",
+    "attestation_path": null, "signature_path": null, "public_key_path": null, "execution_run_id": null}
+}
