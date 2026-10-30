@@ -67,7 +67,7 @@ def main():
     wheel=next(item for item in index['urls'] if item['filename'].endswith('.whl') and 'manylinux' in item['filename'] and 'x86_64' in item['filename'])
     data=download(wheel['url'],100*1024**2);assert hashlib.sha256(data).hexdigest()==wheel['digests']['sha256']
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        name='semgrep/bin/semgrep-core';assert archive.getinfo(name).file_size==201603720
+        name='semgrep-1.125.0.data/purelib/semgrep/bin/semgrep-core';assert archive.getinfo(name).file_size==201603720
         write_binary('semgrep-core',archive.read(name),'313bf3bbb50648fb5c3f43bd1d72dfee28dae436e10a096acb7d9a5839d18f11')
     data=download('https://github.com/projectdiscovery/nuclei/releases/download/v3.3.8/nuclei_3.3.8_linux_amd64.zip',100*1024**2)
     assert hashlib.sha256(data).hexdigest()=='1526650021ada87e9cfc2a30048c8e59f5db9eed079c7807d53b7e181009bfe4'

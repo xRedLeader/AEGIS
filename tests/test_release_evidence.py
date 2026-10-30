@@ -126,6 +126,22 @@ class ReleaseEvidenceTests(unittest.TestCase):
                 self.assertFalse(result["machine_evidence_complete"])
                 self.assertIn({"check": kind, "result": "MISSING_INVALID_OR_STALE"}, result["checks"])
 
+    def test_successful_native_job_cannot_hide_failed_or_missing_test_output(self):
+        for kind in ("ci_native_scanners_22_04", "ci_native_scanners_24_04"):
+            index = next(i for i, ref in enumerate(self.manifest["observations"])
+                         if json.loads((self.bundle/ref["path"]).read_bytes())["kind"] == kind)
+            original = self.manifest["observations"][index]
+            record = json.loads((self.bundle/original["path"]).read_bytes())
+            for raw in (b"2026-10-30T20:01:02.1234567Z Ran 12 tests in 0.1s\n"
+                        b"2026-10-30T20:01:02.1234567Z FAILED (failures=1)\n", b"preparation only\n"):
+                with self.subTest(kind=kind, output=raw):
+                    record["artifacts"] = [self.save(self.bundle, "native.log", raw)]
+                    self.manifest["observations"][index] = self.save(self.bundle, "native-record.json", canonical(record))
+                    self.persist()
+                    self.assertFalse(self.collect()["machine_evidence_complete"])
+            self.manifest["observations"][index] = original
+        self.persist()
+
     def test_claimed_counts_cannot_override_retained_regression_output(self):
         for index, ref in enumerate(self.manifest["observations"]):
             record = json.loads((self.bundle/ref["path"]).read_bytes())

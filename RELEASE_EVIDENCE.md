@@ -69,7 +69,7 @@ to the actual retained outputs). Required kinds and details are:
 |---|---|
 | `ci_ubuntu_22_04`, `ci_ubuntu_24_04` | Exact `job_url`, `head_sha`, `conclusion: "success"`, positive integer `tests`, integer `skipped: 0`; retain the complete job log. |
 | `ci_agent_delegation`, `ci_notification_receiver`, `ci_source_integrity` | Exact job URL, head SHA, success conclusion and original output. |
-| `ci_native_scanners_22_04`, `ci_native_scanners_24_04` | Exact governed-execution job URL, head SHA, success conclusion, pinned preparation receipts and original offline/staging acceptance and recovery outputs. |
+| `ci_native_scanners_22_04`, `ci_native_scanners_24_04` | Exact governed-execution job URL, head SHA, success conclusion, positive integer staging `tests`, integer `skipped: 0`, pinned preparation receipts and original offline/staging acceptance and recovery outputs. The retained staging log must agree with the count and contain no failed run. |
 | `ci_packaged_services_22_04`, `ci_packaged_services_24_04` | Exact installed-services job URL, head SHA, success conclusion and retained package/service evidence. These CI fixtures do not replace `installed_host`. |
 | `installed_host` | `installed_commit`, `host_identity_sha256`, `configuration_sha256`, `dependency_inventory_sha256`, `kernel_acceptance: "PASS"`, `packaged_services: "PASS"`; retain actual service identity, policy/AppArmor, diagnostic and kernel outputs. |
 | `staging_proof` | `engagement_scope_sha256`; `proof_admission`, `forged_proof_rejected`, `remediation_retest` all `"PASS"`; retain independently reviewed proof and separately authorized retest. |

@@ -22,6 +22,8 @@ MACHINE_GATES = frozenset({"ci_ubuntu_22_04", "ci_ubuntu_24_04", "ci_agent_deleg
     "ci_notification_receiver", "ci_source_integrity", "installed_host", "staging_proof",
     "recovery_drills", "delivery_drills"})
 ROLES = frozenset({"independent_reviewer", "signing_key_custodian", "off_host_custodian", "release_owner"})
+UNITTEST_GATES = frozenset({"ci_ubuntu_22_04", "ci_ubuntu_24_04",
+                            "ci_native_scanners_22_04", "ci_native_scanners_24_04"})
 
 
 def commit(value):
@@ -69,9 +71,9 @@ def validate_record(record, candidate, maximum_age, now):
         require(re.fullmatch(r"https://github\.com/[^/]+/[^/]+/actions/runs/[0-9]+/job/[0-9]+", details.get("job_url", "")),
                 "exact CI job reference required")
         require(details.get("head_sha") == candidate and details.get("conclusion") == "success", "CI candidate/result differs")
-        if record["kind"] in {"ci_ubuntu_22_04", "ci_ubuntu_24_04"}:
+        if record["kind"] in UNITTEST_GATES:
             require(type(details.get("tests")) is int and details["tests"] > 0 and
-                    type(details.get("skipped")) is int and details["skipped"] == 0, "full regression count or no-skip evidence missing")
+                    type(details.get("skipped")) is int and details["skipped"] == 0, "test count or no-skip evidence missing")
     elif record["kind"] == "installed_host":
         for name in ("host_identity_sha256", "configuration_sha256", "dependency_inventory_sha256"):
             sha256(details.get(name))
@@ -118,7 +120,7 @@ def collect(bundle_root, source_root, candidate, trust_path, *, now=None):
                 validate_record(record, candidate, bundle["max_age_seconds"], now)
                 require(record["kind"] not in observations, "duplicate machine observation")
                 artifacts = [reference(root, artifact) for artifact in record["artifacts"]]
-                if record["kind"] in {"ci_ubuntu_22_04", "ci_ubuntu_24_04"}:
+                if record["kind"] in UNITTEST_GATES:
                     logs = b"\n".join(artifacts).decode("utf-8", "replace")
                     # Strip GitHub's presentation prefix only after hashing the retained bytes.
                     logs = re.sub(r"(?m)^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T"
