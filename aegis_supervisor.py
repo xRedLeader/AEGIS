@@ -175,7 +175,9 @@ class AegisSupervisor:
         digest = hashlib.sha256((prev + "\n" + payload).encode()).hexdigest()
         con.execute("INSERT INTO audit(event,previous_hash,digest) VALUES (?,?,?)", (payload, prev, digest))
 
-    def reserve(self, seconds: int, method: str = "source_review") -> tuple[dict, dict, str]:
+    def reserve(self, seconds: int, method: str = "source_review", *, evidence_bytes: int = SCAN_RESULT_RESERVATION) -> tuple[dict, dict, str]:
+        if type(evidence_bytes) is not int or not 0 <= evidence_bytes <= 262144:
+            deny("invalid bounded evidence reservation")
         info, m = self._guard()
         if method not in ("source_review", "dependency_analysis", "bounded_fuzzing") or method not in info["approved_methods"]:
             deny(method + " is not authorized")
@@ -201,12 +203,12 @@ class AegisSupervisor:
                     deny("engagement scope hash changed; new engagement required")
                 if row[1] + seconds > m["limits"]["engagement_runtime_minutes"] * 60:
                     deny("engagement cumulative runtime budget exceeded")
-                if row[2] + SCAN_RESULT_RESERVATION > m["limits"]["max_total_evidence_bytes"]:
+                if row[2] + evidence_bytes > m["limits"]["max_total_evidence_bytes"]:
                     deny("engagement cumulative evidence budget exceeded")
                 self._check_kill(eid)
-                con.execute("UPDATE usage SET reserved_seconds=reserved_seconds+?,reserved_evidence_bytes=reserved_evidence_bytes+? WHERE engagement_id=?", (seconds, SCAN_RESULT_RESERVATION, eid))
+                con.execute("UPDATE usage SET reserved_seconds=reserved_seconds+?,reserved_evidence_bytes=reserved_evidence_bytes+? WHERE engagement_id=?", (seconds, evidence_bytes, eid))
                 con.execute("INSERT INTO runs VALUES(?,?,?,?,?,NULL)", (run_id, eid, "reserved", seconds, datetime.now(timezone.utc).isoformat()))
-                self._event(con, {"type": "reserved", "engagement_id": eid, "run_id": run_id, "scope_sha": info["manifest_sha256"], "runtime_seconds": seconds, "evidence_bytes": SCAN_RESULT_RESERVATION})
+                self._event(con, {"type": "reserved", "engagement_id": eid, "run_id": run_id, "scope_sha": info["manifest_sha256"], "runtime_seconds": seconds, "evidence_bytes": evidence_bytes})
                 con.commit()
             except BaseException:
                 con.rollback()
@@ -247,9 +249,9 @@ class AegisSupervisor:
 
     def _write_report(self, info: dict, run_id: str, payload: bytes,
                       filename: str = "source-review.json") -> str:
-        if filename not in {"source-review.json", "http-result.json", "dependency-inventory.json", "bounded-fuzz.json"}:
+        if filename not in {"source-review.json", "http-result.json", "dependency-inventory.json", "bounded-fuzz.json", "source-audit.json"}:
             deny("unsupported evidence artifact filename")
-        if len(payload) > MAX_RESULT_BYTES:
+        if len(payload) > (262144 if filename == "source-audit.json" else MAX_RESULT_BYTES):
             deny("worker evidence exceeds reserved byte budget")
         out = Path(info["report_directory"])
         with open_directory_nofollow(out, create=True) as rootfd:

@@ -1,5 +1,25 @@
 # AEGIS release notes
 
+## v2.1 source-audit implementation candidate
+
+Adds the source-first Cloudflare methodology pinned at
+`c1c8a8c1471069fb0e188eeaff69b8e8db6564a8`, with its MIT license and original
+checksums. A bounded coordinator assigns reconnaissance, hunting, coverage
+criticism, independent verification and final record review to registered agents.
+Replies are signed and bound to the assignment, policy and exact source files.
+
+Coverage uses deterministic IDs and retains deferred/blocked work and prior
+attempts. Selected prior audits are checked against their audited bytes, source
+changes are reported, and old findings/coverage are re-examined. Budget reserves
+protect critic and verification work. The new `source_audit` integrated action
+pins both inputs and feeds the existing canonical v2 reporter, including retained
+rejection proofs. Source-only assertions cannot replace staging confirmation.
+
+The application adds no model-provider or Node runtime dependency. External
+adapters supply isolated agent contexts and keep their private keys outside model
+input. New source code, guides and schema data never become execution authority.
+See [V2_1_SOURCE_AUDIT.md](V2_1_SOURCE_AUDIT.md) for setup and limits.
+
 ## v2.0 implementation candidate — release sign-off pending
 
 The candidate in PR #8 composes the existing source review, offline dependency
