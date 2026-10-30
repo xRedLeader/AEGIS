@@ -1,0 +1,4 @@
+name: aegis/synthetic-csharp
+version: 0.0.1
+dependencies:
+  codeql/csharp-all: 5.4.3

@@ -1,0 +1,4 @@
+name: aegis/synthetic-javascript
+version: 0.0.1
+dependencies:
+  codeql/javascript-all: 2.6.18

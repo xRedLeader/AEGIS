@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "configured": false,
+  "source_commit": "0000000000000000000000000000000000000000",
+  "source_manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "install_root": "/opt/aegis",
+  "python": "/opt/aegis-runtime/bin/python",
+  "policy_root": "/etc/aegis",
+  "state_root": "/var/lib/aegis-controller",
+  "report_root": "/var/lib/aegis-reports",
+  "receiver_state_root": "/var/lib/aegis-receiver",
+  "agent_state_root": "/var/lib/aegis-agent",
+  "runner_root": "/var/lib/aegis-runner",
+  "run_root": "/run/aegis",
+  "repository_roots": ["/srv/aegis-targets"],
+  "accounts": {
+    "operator": {"user": "aegis-operator", "uid": 970, "group": "aegis-operator", "gid": 970},
+    "agent": {"user": "aegis-agent", "uid": 971, "group": "aegis-agent", "gid": 971},
+    "receiver": {"user": "aegis-receiver", "uid": 972, "group": "aegis-receiver", "gid": 972}
+  },
+  "socket_groups": {
+    "gateway": {"name": "aegis-gateway", "gid": 973},
+    "receiver": {"name": "aegis-notify", "gid": 974}
+  },
+  "apparmor_profile": "aegis-supervisor",
+  "memory_max_mb": 512,
+  "tasks_max": 96,
+  "cpu_quota_percent": 100
+}

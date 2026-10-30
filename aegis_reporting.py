@@ -33,7 +33,8 @@ MAX_REPORT = 65536
 ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 SAFE_ID = re.compile(r"[@.A-Za-z0-9_][@A-Za-z0-9._/-]{0,180}\Z")
 FAMILIES = {"bounded-fuzz.json": "bounded_fuzz", "source-review.json": "source_review",
-            "advisory-candidates.json": "osv_advisory", "source-audit.json": "source_audit"}
+            "advisory-candidates.json": "osv_advisory", "source-audit.json": "source_audit",
+            "scanner-import.json": "scanner_import"}
 RULE_IDS = {"PY-SHELL-TRUE", "PY-PICKLE-LOAD", "PY-EVAL", "PY-TLS-NOVERIFY",
             "JS-TLS-NOVERIFY", "JS-EVAL"}
 
@@ -57,11 +58,48 @@ def limited_int(value, maximum):
     return value
 
 
+def measured_coverage(value):
+    """Expose bounded worker measurements without copying paths or arbitrary prose."""
+    from aegis_worker import ENGINE, RULE_CATALOG
+    if (not isinstance(value, dict) or value.get("schema_version") != 1 or
+            value.get("engine") != ENGINE or value.get("rules") != RULE_CATALOG or
+            not isinstance(value.get("files"), list) or len(value["files"]) > 512):
+        deny("incompatible measured detector coverage")
+    identity = value.get("source_identity")
+    if identity != {"kind": "recorded_observation_manifest", "complete_repository": False,
+                    "sha256": hashlib.sha256(canonical(value["files"])).hexdigest()}:
+        deny("measured source identity differs from recorded observations")
+    names = ("assessed", "unsupported", "excluded", "unreadable", "partial")
+    counts = value.get("counts")
+    if not isinstance(counts, dict) or set(counts) != set(names):
+        deny("invalid detector coverage counts")
+    for count in counts.values(): limited_int(count, 10000000)
+    status = value.get("assessment_status")
+    if status not in {"no_leads_in_assessed_files", "unverified_leads", "incomplete", "unsupported_analysis", "no_supported_source_files"}:
+        deny("invalid detector assessment status")
+    if (not isinstance(value.get("limits_hit"), list) or
+            any(x not in {"files", "bytes", "evidence_bytes", "per_file_bytes", "candidates"} for x in value["limits_hit"]) or
+            type(value.get("remaining_entries_unknown")) is not bool):
+        deny("invalid detector coverage limits")
+    unrecorded = limited_int(value.get("unrecorded_entries"), 10000000)
+    return {"tested": ["Detector " + ENGINE["name"] + " version " + ENGINE["version"] + "; ruleset SHA-256 " + ENGINE["ruleset_sha256"] + ".",
+                       "Rule families: " + ", ".join(sorted(RULE_IDS)) + ".",
+                       "Recorded source-observation manifest SHA-256 " + identity["sha256"] + ".",
+                       "Assessment status: " + status + "; " + ", ".join(k + "=" + str(counts[k]) for k in names) + "."],
+            "untested": ["Deployment reachability and attacker impact are not established by this source artifact.",
+                         "Unrecorded entries=" + str(unrecorded) + "; remaining entries unknown=" + str(value["remaining_entries_unknown"]).lower() + "."],
+            "limitations": ["Regex-only observations cover recorded files, not a complete or atomic repository snapshot; zero leads do not establish security.",
+                            "Limits reached: " + (", ".join(value["limits_hit"]) or "none") + ". Unsupported, excluded, unreadable and partial files are not cleared."]}
+
+
 def projection(raw: bytes, filename: str, eid: str, run_id: str, ended: str):
     """Allowlist source evidence; never accept asserted severities or impact."""
     if filename == "source-audit.json":
         from aegis_audit_reporting import research_projection
         return research_projection(raw, eid, run_id, ended)[0]
+    if filename == "scanner-import.json":
+        from aegis_scanner_contract import report_projection
+        return report_projection(raw, eid, run_id, ended)
     if filename not in FAMILIES or not 0 < len(raw) <= MAX_EVIDENCE:
         deny("unsupported bounded evidence")
     try:
@@ -128,11 +166,20 @@ def projection(raw: bytes, filename: str, eid: str, run_id: str, ended: str):
                 deny("invalid OSV lead")
             advisory = safe(c.get("advisory_id"),80)
             ecosystem = safe(c.get("ecosystem"),40)
-            name = safe(c.get("package"),140)
+            from aegis_intelligence import canonical as package_name
+            name = c.get("package")
+            if not isinstance(name, str) or len(name) > 140 or package_name(ecosystem, name) != name:
+                deny("invalid dependency package coordinate")
             version = safe(c.get("version"),80)
             lead("Potential dependency advisory " + advisory, ecosystem + "/" + name + "@" + version, i,
                  "An affected declared version does not prove installation, reachability or exploitability.",
                  "Verify installed version, affected conditions, fixed versions and reachable application paths.")
+            if "manifest_sha256" in c:
+                if (not isinstance(c["manifest_sha256"], str) or not re.fullmatch(r"[a-f0-9]{64}", c["manifest_sha256"]) or
+                        c.get("evidence_kind") not in {"declared", "locked"} or
+                        not isinstance(c.get("origin"), str) or not re.fullmatch(r"[a-z]+:[0-9]+(?:/[a-z]+:[0-9]+)?", c["origin"])):
+                    deny("invalid dependency manifest provenance")
+                items[-1]["description"] = "Unverified " + c["evidence_kind"] + " coordinate in " + safe(c.get("source"), 180) + " at " + c["origin"] + "; manifest SHA-256 " + c["manifest_sha256"] + "."
         tested = "Operator-attested bounded OSV enumerated-version correlation."
         limits = "Missing/range-only advisories, incomplete feeds and runtime dependencies are not cleared."
     report = {"schema_version": 2, "engagement_id": eid, "source_run_id": run_id,
@@ -142,6 +189,12 @@ def projection(raw: bytes, filename: str, eid: str, run_id: str, ended: str):
             "tested": [tested],
             "untested": ["Deployment reachability and attacker impact are not established by this source artifact."],
             "limitations": [limits]}}
+    if kind == "source_review" and "coverage" in obj:
+        report["coverage"] = measured_coverage(obj["coverage"])
+    if kind == "osv_advisory" and "inventory_entries_unresolved" in obj.get("summary", {}):
+        unresolved = limited_int(obj["summary"]["inventory_entries_unresolved"], 10000)
+        status = safe(obj["summary"].get("inventory_coverage_status"), 60)
+        report["coverage"]["untested"].append("Inventory status: " + status + "; unresolved coordinates=" + str(unresolved) + ". Declared/locked coordinates do not prove installation.")
     schema = json.loads((HERE / "findings-v2.schema.json").read_text())
     errors = list(Draft202012Validator(schema).iter_errors(report))
     if errors: deny("canonical report failed v2 schema")
@@ -150,7 +203,7 @@ def projection(raw: bytes, filename: str, eid: str, run_id: str, ended: str):
 
 def markdown(report):
     """Derive every public-facing view from one schema-validated source."""
-    if report.get("source_evidence", {}).get("kind") == "source_audit":
+    if report.get("source_evidence", {}).get("kind") in {"source_audit", "scanner_import"}:
         # Keep legacy packages byte-stable; new agent prose must not render links/HTML.
         report = json.loads(canonical(report))
         for item in report["findings"]:
@@ -398,6 +451,10 @@ class ReportingSupervisor(AegisSupervisor):
             try: verify_rows(con.execute("SELECT seq,event,previous_hash,digest FROM audit ORDER BY seq").fetchall())
             except AuditError as exc: raise ExecutionDenied("report audit verification failed") from exc
         raw = self._read_source(info, run_id, filename)
+        if filename == "scanner-import.json":
+            from aegis_scanner_import import retained_import
+            if retained_import(self, info, run_id) != raw:
+                deny("scanner import changed during report validation")
         proofs = None
         if filename == "source-audit.json":
             from aegis_source_audit import retained

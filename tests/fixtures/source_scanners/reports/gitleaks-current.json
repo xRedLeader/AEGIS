@@ -1,0 +1,22 @@
+[
+ {
+  "RuleID": "aegis-synthetic-canary",
+  "Description": "Synthetic fixture credential marker",
+  "StartLine": 1,
+  "EndLine": 1,
+  "StartColumn": 12,
+  "EndColumn": 61,
+  "Match": "AEGIS_TEST_SECRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
+  "Secret": "AEGIS_TEST_SECRET_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
+  "File": "secrets-positive.txt",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 4.7965655,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": "",
+  "Tags": [],
+  "Fingerprint": "secrets-positive.txt:aegis-synthetic-canary:1"
+ }
+]

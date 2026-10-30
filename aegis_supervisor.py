@@ -55,9 +55,14 @@ def relative_parts(absolute: Path):
 
 
 @contextmanager
-def open_directory_nofollow(directory: Path, create: bool = False):
-    """Safely walk every POSIX path component without following symlinks."""
-    fd = os.open("/", O_DIR)
+def open_directory_nofollow(directory: Path, create: bool = False, *, path_only: bool = False):
+    """Safely walk components; optional O_PATH needs traversal, not read access."""
+    flags = O_DIR
+    if path_only:
+        if create or not hasattr(os, "O_PATH"):
+            deny("path-only traversal requires Linux O_PATH and cannot create directories")
+        flags |= os.O_PATH
+    fd = os.open("/", flags)
     try:
         for part in relative_parts(directory):
             if create:
@@ -65,7 +70,7 @@ def open_directory_nofollow(directory: Path, create: bool = False):
                     os.mkdir(part, mode=0o700, dir_fd=fd)
                 except FileExistsError:
                     pass
-            nxt = os.open(part, O_DIR, dir_fd=fd)
+            nxt = os.open(part, flags, dir_fd=fd)
             os.close(fd)
             fd = nxt
         yield fd
@@ -179,7 +184,7 @@ class AegisSupervisor:
         if type(evidence_bytes) is not int or not 0 <= evidence_bytes <= 262144:
             deny("invalid bounded evidence reservation")
         info, m = self._guard()
-        if method not in ("source_review", "dependency_analysis", "bounded_fuzzing") or method not in info["approved_methods"]:
+        if method not in ("source_review", "dependency_analysis", "bounded_fuzzing", "controlled_http_testing") or method not in info["approved_methods"]:
             deny(method + " is not authorized")
         if type(seconds) is not int or seconds < 1 or seconds > m["limits"]["max_single_run_minutes"] * 60:
             deny("requested run duration exceeds signed single-run limit")
@@ -249,7 +254,7 @@ class AegisSupervisor:
 
     def _write_report(self, info: dict, run_id: str, payload: bytes,
                       filename: str = "source-review.json") -> str:
-        if filename not in {"source-review.json", "http-result.json", "dependency-inventory.json", "bounded-fuzz.json", "source-audit.json"}:
+        if filename not in {"source-review.json", "http-result.json", "dependency-inventory.json", "bounded-fuzz.json", "source-audit.json", "scanner-import.json"}:
             deny("unsupported evidence artifact filename")
         if len(payload) > (262144 if filename == "source-audit.json" else MAX_RESULT_BYTES):
             deny("worker evidence exceeds reserved byte budget")

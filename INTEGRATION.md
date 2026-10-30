@@ -87,7 +87,7 @@ model-facing retest delegate, policy write, credential broker, arbitrary
 shell/network command or deployed-exploit confirmation is added.
 See `V1_9_INVESTIGATION.md` for exact command examples and threat boundaries.
 
-## v2.0 end-to-end operator workflow (feature branch)
+## v2.0 end-to-end operator workflow (merged)
 
 The fixed `aegis_integrated_assessment.py` CLI provides `create`, `snapshot`, `advance`, and bounded `run` operations under a private, positively configured operator-owned `assessment-policy.json`. It composes *only* existing signed-scope supervisors and does not expose them to arbitrary model calls. A source step's UUID can be passed into reporting only by an explicit typed step dependency; reporting and investigation must originate from earlier admitted steps. Retesting and report promotion continue to require their existing independent controls.
 
@@ -96,3 +96,29 @@ Use `V2_0_INTEGRATED_ASSESSMENT.md` for the exact policy schema, limits, recover
 ## v2.0 typed agent delegation and staging sign-off
 
 Only an operator-controlled Unix gateway may translate the model adapter's strict JSON `snapshot` or `propose` into the next preauthorized assessment action. A domain-separated operator-signed grant binds the assessment, policy digests, peer UID, agent public key and expiry; every client request is independently signed and persistently replay-protected. The gateway contains no signing private key and never offers arbitrary shell, network, policy or vault actions. See `V2_0_RELEASE_ACCEPTANCE.md`. Reviewed report admission and remediation retesting are named operator-pinned steps, not agent-directed exploit validation.
+
+## Scanner admission and current evidence
+
+The typed `scanner_import` action accepts `seconds`, `scanner_policy` and
+`scanner_report`. Both paths are protected operator inputs; the admission policy
+pins source/artifact, tool/configuration and report identity. A subsequent report
+step may consume its `scanner-import.json` output. The action does not execute a
+scanner or expand signed scope. See [the admission contract](SCANNER_ADMISSION.md).
+The [release collector](RELEASE_EVIDENCE.md) reconciles exact-commit artifacts
+without creating runtime evidence or granting production approval.
+
+The fixed `scanner_execute` action takes `seconds` and a protected
+`scanner_execution_policy`; `staging_dast` takes `seconds`, `staging_profile`
+and `staging_signature`. The controller pins these files into its plan identity.
+Changing a profile or signature invalidates that plan. The model can propose
+only the next named step, and cannot supply executable paths, commands, targets,
+credentials, templates or flags. Both actions enforce the workflow's 2–30 second
+execution ceiling before launching a scanner; source profiles must also match
+the workflow repository.
+
+Successful execution must complete governed admission before a following
+`report` step may consume `scanner-import.json`. The workflow records both the
+execution and admitted-evidence run IDs. Missing admission or an interrupted
+action requires operator reconciliation, with no automatic rerun. These reports
+remain unverified leads. The separate signed staging profile also requires
+`controlled_http_testing`; see [the restricted staging boundary](STAGING_DAST_BOUNDARY.md).

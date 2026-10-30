@@ -1,0 +1,47 @@
+[Unit]
+Description=AEGIS @ROLE@ (@COMMIT@)
+After=systemd-tmpfiles-setup.service
+ConditionPathExists=@POLICY@/enabled
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=@TYPE@
+User=@USER@
+Group=@GROUP@
+SupplementaryGroups=@SUPPLEMENTARY@
+UMask=0077
+WorkingDirectory=/
+Environment=PATH=/usr/bin:/bin
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=AEGIS_STATE_ROOT=@STATE@
+Environment=AEGIS_TRUST_POLICY=@POLICY@/operator/trust.json
+ExecStart=@PYTHON@ -I @RELEASE@/aegis_service_entry.py @ROLE@ --config @POLICY@/install.json
+Restart=@RESTART@
+RestartSec=2
+TimeoutStartSec=120
+TimeoutStopSec=15
+KillMode=control-group
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+# Do not add a locked child mount beneath the worker's nonrecursive /usr bind.
+# Empty capabilities and the worker syscall policy already deny module changes.
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+LimitCORE=0
+LimitNOFILE=256
+MemoryMax=@MEMORY@M
+TasksMax=@TASKS@
+CPUQuota=@CPU@%
+ReadOnlyPaths=@POLICY@ @RELEASE@ @RUNTIME@ @REPOSITORIES@
+ReadWritePaths=@WRITABLE@
+@APPARMOR@
+
+[Install]
+WantedBy=multi-user.target

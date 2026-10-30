@@ -1,0 +1,9 @@
+{
+  "apps/python/requirements.txt": "requests==2.31.0\nrequests==2.32.3\ncolorama>=0.4\nclick==8.1.0; python_version >= '3.8'\n-r ../../outside.txt\nprivate @ https://user:SECRET_PASSWORD@example.invalid/repo\n",
+  "apps/web/package-lock.json": {"lockfileVersion":3,"packages":{"":{"version":"1.0.0"},"node_modules/lodash":{"version":"4.17.20"},"node_modules/@types/node":{"version":"18.1.0"},"node_modules/local":{"version":"1.0.0","link":true},"node_modules/ranged":{"version":"^1.0.0"}}},
+  "apps/dotnet/packages.lock.json": {"version":1,"dependencies":{"net8.0":{"Newtonsoft.Json":{"type":"Direct","requested":"[13.0.1, )","resolved":"13.0.1","contentHash":"EXAMPLE"},"LocalProject":{"type":"Project"}},"net9.0":{"Newtonsoft.Json":{"type":"Direct","requested":"[13.0.1, )","resolved":"13.0.1","contentHash":"EXAMPLE"},"Other.Package":{"type":"Transitive","resolved":"2.1.0"}}}},
+  "apps/java/pom.xml": "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"><modelVersion>4.0.0</modelVersion><dependencies><dependency><groupId>org.example</groupId><artifactId>unsafe-fixture</artifactId><version>1.0.0</version></dependency><dependency><groupId>org.example</groupId><artifactId>safe-control</artifactId><version>2.0.0</version></dependency><dependency><groupId>org.example</groupId><artifactId>managed</artifactId><version>${managed.version}</version></dependency><dependency><groupId>org.example</groupId><artifactId>ranged</artifactId><version>[1.0,2.0)</version></dependency></dependencies></project>",
+  "apps/go/go.mod": "module example.org/application\ngo 1.22\nrequire (\n example.org/unsafe v1.0.0\n example.org/safe v2.0.0\n example.org/local v1.0.0\n example.org/excluded v1.0.0\n)\nreplace example.org/local => ../private\nexclude example.org/excluded v1.0.0\n",
+  "apps/go/go.sum": "example.org/not-installed v9.0.0 h1:CHECKSUM_ONLY\n",
+  "apps/unsupported/build.gradle.kts": "throw Error(\"MUST NEVER EXECUTE\")\n"
+}

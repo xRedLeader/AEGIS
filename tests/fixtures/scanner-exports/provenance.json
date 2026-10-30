@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "upstream_fixture_license": "Apache-2.0.txt",
+  "fixtures": [
+    {
+      "file": "trivy-0.58.2-image.json",
+      "sha256": "67ac681364f4b1368a26c2697d4b9f659e1b12f188e5a533225be592935f4dbf",
+      "kind": "upstream_exporter_golden",
+      "project": "Aqua Security Trivy",
+      "release": "v0.58.2",
+      "commit": "936f06a57864d073aa77b38f77fe76c4fcb1f7c1",
+      "source": "https://github.com/aquasecurity/trivy/blob/936f06a57864d073aa77b38f77fe76c4fcb1f7c1/integration/testdata/alpine-310.json.golden",
+      "notes": "Untouched upstream integration export. Test clock is fixed; scanner/database checksums are absent. No local Trivy invocation or image pull is claimed."
+    },
+    {
+      "file": "grype-0.85.0-image.json",
+      "sha256": "361bd3bb182080802a18b9de55a05f637ceeeaaa7589eb5ba65c4d9a000110e0",
+      "kind": "upstream_exporter_golden",
+      "project": "Anchore Grype",
+      "release": "v0.85.0",
+      "commit": "2dd10240f5e6004b2e9902d1d00a5dffb22abc03",
+      "source": "https://github.com/anchore/grype/blob/2dd10240f5e6004b2e9902d1d00a5dffb22abc03/grype/presenter/json/test-fixtures/snapshot/TestJsonImgsPresenter.golden",
+      "notes": "Untouched upstream presenter export with synthetic advisory/package names. Build is explicitly not provided and timestamp is empty. No local Grype execution is claimed."
+    },
+    {
+      "file": "zap-reports-0.35.0.json",
+      "sha256": "d41f22eca6c588e61cc9760ebc86797d10c89c2f96a1fbe28e006e7bceb94aef",
+      "kind": "upstream_exporter_golden",
+      "project": "ZAP Report Generation add-on",
+      "release": "reports-v0.35.0",
+      "commit": "b4bd534d41d1ddc35955f5ecb96c95c2e98cdcbc",
+      "source": "https://github.com/zaproxy/zap-extensions/blob/b4bd534d41d1ddc35955f5ecb96c95c2e98cdcbc/addOns/reports/src/test/resources/org/zaproxy/addon/reports/resources/basic-traditional-json.json",
+      "notes": "Untouched upstream template export. Core version is Dev Build; generation clock is fixed and timezone-free. Synthetic example.com locations; no request to example.com occurred here."
+    },
+    {
+      "file": "nuclei-3.3.8-positive.json",
+      "sha256": "81e5a0f680804124aaa8d05af20b6f42c6f30c6aa98fec051408380acd36ab0f",
+      "kind": "local_cli_capture",
+      "release": "v3.3.8",
+      "binary_sha256": "63f881a5b1df284710daf02e880f3ceaf0eca269e0885dd860d0f31715153a9c",
+      "release_archive_sha256": "1526650021ada87e9cfc2a30048c8e59f5db9eed079c7807d53b7e181009bfe4",
+      "source": "https://github.com/projectdiscovery/nuclei/releases/tag/v3.3.8",
+      "template": "nuclei-fixture.yaml",
+      "command": "nuclei -duc -ni -no-color -t fixture.yaml -u http://127.0.0.1:18463/fixture -json-export positive.json -timeout 2 -retries 0 -concurrency 1 -rate-limit 2",
+      "notes": "Actual unprivileged UID999 execution in a fresh network namespace with loopback only. External networking unavailable. Local server returns the synthetic marker only at /fixture."
+    },
+    {
+      "file": "nuclei-3.3.8-control.json",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "kind": "local_cli_capture",
+      "release": "v3.3.8",
+      "command": "nuclei -duc -ni -no-color -t fixture.yaml -u http://127.0.0.1:18463/control -json-export control.json -timeout 2 -retries 0 -concurrency 1 -rate-limit 2",
+      "notes": "Same isolated capture conditions as the positive case; local control response lacks the synthetic marker. Empty matches are a fixture control, not an application clearance claim."
+    },
+    {
+      "file": "nuclei-fixture.yaml",
+      "sha256": "ef9df8d264fd8f57e6d866d9950c07effd77eb766fe10a2ca1bca84f8ee8e4ad",
+      "kind": "aegis_synthetic_fixture",
+      "notes": "Harmless GET and fixed body-word matcher; no exploitation, mutation, scripting or external callback."
+    }
+  ]
+}

@@ -21,7 +21,7 @@ from aegis_reporting import canonical
 from aegis_supervisor import ExecutionDenied, deny
 
 MAX_MODEL = 768
-ACTIONS=frozenset({"source_review","source_audit","dependency_intelligence","local_contract",
+ACTIONS=frozenset({"source_review","source_audit","scanner_import","scanner_execute","staging_dast","dependency_intelligence","local_contract",
     "http_metadata","report","admit_report","investigate","progress_investigation",
     "remediation_retest","notify"})
 
@@ -45,6 +45,7 @@ def parse_model_decision(raw:bytes):
         return "snapshot",None,None
     if (set(obj)!={"operation","step_id","expected_action"} or obj.get("operation")!="propose" or
         not isinstance(obj["step_id"],str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}",obj["step_id"]) or
+        not isinstance(obj["expected_action"],str) or
         obj["expected_action"] not in ACTIONS):
         deny("model proposal may only name an approved fixed action")
     return "propose",obj["step_id"],obj["expected_action"]

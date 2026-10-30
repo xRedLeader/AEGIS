@@ -88,4 +88,7 @@ in the intended deployment. CI's ephemeral fixtures do not establish that fact.
 
 Do **not** mark the last host- or human-dependent gates as complete from CI alone. Do not merge or tag a production `v2.0` release without their sign-off.
 
-The Cloudflare multi-agent research methodology remains scheduled for **v2.1**. It does not change AEGIS's signing, scope or isolation rules.
+The Cloudflare research methodology subsequently merged in **v2.1** through
+PR #9. It preserves AEGIS's signing, scope and isolation rules. Use
+[current release evidence](RELEASE_EVIDENCE.md) to reconcile a new exact candidate;
+this document's v2.0 counts and PR references remain historical.

@@ -1,0 +1,11 @@
+rules:
+  - id: aegis-js-dynamic-eval
+    languages: [javascript, typescript]
+    message: Synthetic dynamic evaluation boundary; not proof of exploitability.
+    severity: WARNING
+    pattern: eval($VALUE)
+  - id: aegis-csharp-process-start
+    languages: [csharp]
+    message: Synthetic process launch boundary; not proof of exploitability.
+    severity: WARNING
+    pattern: Process.Start($VALUE)

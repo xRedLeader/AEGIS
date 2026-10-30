@@ -7,8 +7,10 @@ exact next approved step. Assessment workers run inside Linux namespaces with
 default-deny seccomp; the model receives no general shell, vault or signing key.
 
 **Status: v2.0 merged in [PR #8](https://github.com/xRedLeader/AEGIS/pull/8);
-v2.1 source-audit implementation candidate. Production approval is pending.** The existing release evidence and remaining
-inputs are collected in [the review handoff](V2_0_REVIEW_HANDOFF.md).
+v2.1 source research merged in [PR #9](https://github.com/xRedLeader/AEGIS/pull/9).
+Production approval is pending.** Current candidate evidence belongs in the
+[exact-commit release bundle](RELEASE_EVIDENCE.md); the
+[v2.0 handoff](V2_0_REVIEW_HANDOFF.md) preserves historical evidence.
 [Release acceptance](V2_0_RELEASE_ACCEPTANCE.md) defines the existing merge,
 release and deployment gates; [host acceptance](V2_0_HOST_ACCEPTANCE.md) provides
 the commands and sign-off record. Passing CI does not fill the independent
@@ -30,6 +32,21 @@ reviewer or actual deployment-host fields.
 | Notifications | Durable local Unix receiver, peer-UID validation, commit-before-ack and bounded retry; external human receipt requires separate evidence |
 | v2.0 workflow and delegation | At most 12 operator-pinned steps; short-lived signed grants, separately signed requests, OS peer identity, persistent replay prevention and exact-step binding |
 | Recovery and audit | Lease-fenced durable state, explicit operator abandonment, local hash chain and independently signed checkpoints |
+
+The [detector roadmap](https://github.com/xRedLeader/AEGIS/issues/10) adds measured
+[rule coverage](DETECTOR_COVERAGE.md), broader [dependency inventory](DEPENDENCY_COVERAGE.md),
+[scanner evidence admission](SCANNER_ADMISSION.md), a protected
+[provider runner](PROVIDER_RUNNER.md), [Ubuntu deployment packaging](deployment/README.md) and release-evidence
+reconciliation. Consult each guide for its exact supported formats and remaining
+validation. Optional live Claude testing and accountable pilot sign-off remain
+separate from offline regression tests.
+
+[Governed offline execution](SCANNER_EXECUTION.md) supports pinned Semgrep-core,
+Gitleaks and selected-advisory Trivy SBOM profiles. The separate signed
+[Nuclei staging profile](STAGING_DAST_BOUNDARY.md) permits bounded anonymous
+HTTP GET/HEAD requests through the trusted request broker. Each guide lists
+its restricted configuration, unsupported features and required native checks.
+Execution and import results remain unverified leads.
 
 The workflow's completed status means its configured local operations finished.
 Finding confirmation, deployed impact and remediation retain their independent
@@ -119,7 +136,8 @@ require the existing reauthorization flow; upgrades do not expand authority.
 
 ## Documentation
 
-- [Review handoff and outstanding evidence](V2_0_REVIEW_HANDOFF.md)
+- [Current release evidence and role onboarding](RELEASE_EVIDENCE.md)
+- [Historical v2.0 review handoff](V2_0_REVIEW_HANDOFF.md)
 - [Release acceptance](V2_0_RELEASE_ACCEPTANCE.md) and [actual-host runbook](V2_0_HOST_ACCEPTANCE.md)
 - [Security review and reproduced fixes](V2_0_SECURITY_REVIEW.md)
 - [Security model](SECURITY_MODEL.md), [HTTP boundary](HTTP_GATEWAY_SECURITY.md) and [operator API](OPERATOR_SERVICE_SECURITY.md)

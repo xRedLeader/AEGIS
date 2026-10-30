@@ -192,6 +192,8 @@ class DurableReceiver:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             sock.bind(str(self.path))
+            if self.policy["shared_gid"] is not None:
+                os.chown(self.path, -1, self.policy["shared_gid"])
             os.chmod(self.path, 0o660 if self.policy["shared_gid"] is not None else 0o600)
             inode = os.stat(self.path, follow_symlinks=False)
             sock.listen(8)

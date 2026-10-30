@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "configured": false,
+  "engagement_id": "REPLACE_FROM_SIGNED_STAGING_ENGAGEMENT",
+  "operation_id": "00000000-0000-0000-0000-000000000000",
+  "profile": "nuclei-passive-http-v3.3.8",
+  "executable": {
+    "path": "/opt/aegis/scanners/nuclei-3.3.8",
+    "sha256": "63f881a5b1df284710daf02e880f3ceaf0eca269e0885dd860d0f31715153a9c"
+  },
+  "configuration": {
+    "path": "/etc/aegis/staging-passive-template.yaml",
+    "sha256": "REPLACE_WITH_PROTECTED_TEMPLATE_SHA256"
+  },
+  "origin": "http://127.0.0.1:18080",
+  "routes": ["/aegis-disposable-fixture"],
+  "networks": ["127.0.0.1/32"],
+  "methods": ["GET"],
+  "test_identity": "anonymous-disposable-staging",
+  "mutation_permitted": false,
+  "deployment_sha256": "REPLACE_WITH_INDEPENDENTLY_BOUND_DEPLOYMENT_SHA256",
+  "valid_from_utc": "2000-01-01T00:00:00Z",
+  "valid_until_utc": "2000-01-01T00:01:00Z",
+  "seconds": 20,
+  "max_requests": 1,
+  "max_requests_per_minute": 1,
+  "body_limit": 16384,
+  "rule_id": "aegis-disposable-marker"
+}

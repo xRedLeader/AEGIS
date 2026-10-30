@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "configured": false,
+  "runner_id": "synthetic-provider-smoke",
+  "audit_policy": "/etc/aegis/source-audit-policy.json",
+  "audit_policy_sha256": "REPLACE_WITH_CANONICAL_POLICY_SHA256",
+  "run_directory": "/var/lib/aegis-provider/synthetic-provider-smoke",
+  "provider": {
+    "kind": "fake",
+    "model": "synthetic-v1",
+    "api_key_file": null,
+    "api_key_sha256": null,
+    "input_token_reservation": 200000,
+    "max_output_tokens": 2048,
+    "input_microusd_per_token": 0,
+    "output_microusd_per_token": 0
+  },
+  "source_export": {
+    "approved": false,
+    "classification": "synthetic",
+    "source_sha256": "REPLACE_WITH_APPROVED_SOURCE_MAP_DIGEST",
+    "paths": ["app.py"]
+  },
+  "role_keys": {
+    "recon0": "/etc/aegis/research-keys/recon0.pem",
+    "hunter1": "/etc/aegis/research-keys/hunter1.pem",
+    "hunter2": "/etc/aegis/research-keys/hunter2.pem",
+    "critic1": "/etc/aegis/research-keys/critic1.pem",
+    "critic2": "/etc/aegis/research-keys/critic2.pem",
+    "verifier0": "/etc/aegis/research-keys/verifier0.pem",
+    "reviewer0": "/etc/aegis/research-keys/reviewer0.pem"
+  },
+  "limits": {
+    "max_calls": 12,
+    "max_tokens": 2424576,
+    "max_spend_microusd": 0,
+    "max_wall_seconds": 600,
+    "call_timeout_seconds": 30,
+    "max_attempts_per_assignment": 2,
+    "max_prompt_bytes": 131072,
+    "max_response_bytes": 32768
+  }
+}

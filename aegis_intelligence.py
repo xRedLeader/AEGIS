@@ -18,6 +18,7 @@ import stat
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from aegis_dependency_worker import canonical_package, PIP_VERSION
 
 CONTEXT = b"AEGIS-osv-intelligence-snapshot-v1\x00"
 MAX_BUNDLE = 1024 * 1024
@@ -25,7 +26,6 @@ MAX_INVENTORY = 32768
 MAX_RECORDS = 250
 MAX_CANDIDATES = 150
 ADVISORY_ID = re.compile(r"[A-Z0-9][A-Z0-9._-]{2,79}\Z")
-PACKAGE_NAME = re.compile(r"(?:@[a-z0-9_.-]{1,80}/)?[a-z0-9_.-]{1,128}\Z")
 
 
 class IntelligenceDenied(ValueError):
@@ -127,12 +127,7 @@ def load_signed_snapshot(bundle_path: Path, signature_path: Path, public_key_pat
 
 
 def canonical(ecosystem: str, name: str) -> str | None:
-    if ecosystem == "PyPI" and isinstance(name, str) and len(name) <= 128:
-        n = re.sub(r"[-_.]+", "-", name).lower()
-        return n if PACKAGE_NAME.fullmatch(n) else None
-    if ecosystem == "npm" and isinstance(name, str) and name == name.lower():
-        return name if PACKAGE_NAME.fullmatch(name) else None
-    return None
+    return canonical_package(ecosystem, name)
 
 
 def correlate(inventory: dict, bundle: dict, *, digest: str = "") -> dict:
@@ -143,11 +138,44 @@ def correlate(inventory: dict, bundle: dict, *, digest: str = "") -> dict:
     if not isinstance(bundle, dict) or bundle.get("format") != "AEGIS-OSV-v1":
         fail("OSV snapshot must be validated before correlation")
     leads, unresolved, withdrawals = [], 0, 0
+    provenance_fields = {"manifest_sha256", "evidence_kind", "origin"}
+    schema = inventory.get("schema_version", 1)
+    if type(schema) is not int or schema not in (1, 2):
+        fail("unsupported dependency inventory schema")
+    manifests = {}
+    if schema == 2:
+        entries = inventory.get("manifests")
+        if not isinstance(entries, list) or len(entries) > 64:
+            fail("invalid manifest provenance")
+        for entry in entries:
+            if (not isinstance(entry, dict) or not isinstance(entry.get("path"), str) or
+                    entry["path"] in manifests or not isinstance(entry.get("sha256"), str) or
+                    not re.fullmatch(r"[a-f0-9]{64}", entry["sha256"])):
+                fail("invalid manifest provenance")
+            manifests[entry["path"]] = entry["sha256"]
+        encoded = json.dumps(entries, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+        if hashlib.sha256(encoded).hexdigest() != inventory.get("manifest_set_sha256"):
+            fail("manifest set digest mismatch")
     for dependency in inventory["packages"]:
-        if (not isinstance(dependency, dict) or set(dependency) != {"ecosystem", "name", "version", "source", "classification"} or
-                not isinstance(dependency["version"], str) or len(dependency["version"]) > 80 or
-                canonical(dependency["ecosystem"], dependency["name"]) is None):
+        expected = {"ecosystem", "name", "version", "source", "classification"} | (provenance_fields if schema == 2 else set())
+        if (not isinstance(dependency, dict) or set(dependency) != expected or
+                not isinstance(dependency["version"], str) or not PIP_VERSION.fullmatch(dependency["version"]) or
+                not isinstance(dependency["name"], str) or
+                canonical(dependency["ecosystem"], dependency["name"]) != dependency["name"] or
+                not isinstance(dependency["source"], str) or len(dependency["source"]) > 180 or
+                not re.fullmatch(r"[A-Za-z0-9_.@-]+(?:/[A-Za-z0-9_.@-]+)*", dependency["source"]) or
+                any(p in (".", "..") for p in dependency["source"].split("/")) or
+                dependency["classification"] not in ("declared_pin_not_verified_installed", "lockfile_entry_not_verified_installed")):
             fail("malformed dependency coordinate")
+        provenance = {}
+        if schema == 2:
+            if (dependency["source"] not in manifests or dependency["manifest_sha256"] != manifests.get(dependency["source"]) or
+                    dependency["evidence_kind"] not in ("declared", "locked") or
+                    not isinstance(dependency["origin"], str) or
+                    not re.fullmatch(r"[a-z]+:[0-9]+(?:/[a-z]+:[0-9]+)?", dependency["origin"]) or
+                    ((dependency["evidence_kind"] == "locked") != (dependency["classification"] == "lockfile_entry_not_verified_installed"))):
+                fail("dependency origin disagrees with manifest provenance")
+            provenance = {field: dependency[field] for field in provenance_fields}
         for advisory in bundle["records"]:
             if advisory.get("withdrawn"):
                 withdrawals += 1
@@ -171,14 +199,16 @@ def correlate(inventory: dict, bundle: dict, *, digest: str = "") -> dict:
                         fail("candidate count cap exceeded; do not imply complete coverage")
                     leads.append({"advisory_id": advisory["id"], "ecosystem": e, "package": n,
                                   "version": dependency["version"], "source": dependency["source"],
-                                  "classification": "OSV_ENUMERATED_VERSION_LEAD_NOT_CONFIRMED_EXPLOITABLE"})
+                                  "classification": "OSV_ENUMERATED_VERSION_LEAD_NOT_CONFIRMED_EXPLOITABLE", **provenance})
                 elif ranges:
                     unresolved += 1
     return {"status": "SIGNED_OSV_ADVISORY_LEADS_NOT_EXPLOIT_VERIFICATION",
             "source": "OSV", "retrieved_at_utc": bundle["retrieved_at_utc"],
             "bundle_sha256": digest, "leads": leads,
             "summary": {"dependency_entries": len(inventory["packages"]), "exact_version_leads": len(leads),
-                        "range_only_associations_unresolved": unresolved, "withdrawn_entries_skipped": withdrawals},
+                        "range_only_associations_unresolved": unresolved, "withdrawn_entries_skipped": withdrawals,
+                        "inventory_entries_unresolved": len(inventory.get("unresolved", [])),
+                        "inventory_coverage_status": inventory.get("coverage", {}).get("status", "legacy_unmeasured")},
             "limitations": ["Absence from this bounded snapshot does not mean no vulnerability exists.",
                             "Only enumerated OSV versions are correlated; ranges require ecosystem-aware verification.",
                             "The signer attests admission/freshness, not completeness of OSV data or exploitability."]}

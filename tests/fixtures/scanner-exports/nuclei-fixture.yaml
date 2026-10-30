@@ -1,0 +1,13 @@
+id: aegis-fixture-marker
+info:
+  name: AEGIS inert local fixture marker
+  author: aegis
+  severity: info
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+    matchers:
+      - type: word
+        words:
+          - "AEGIS_SYNTHETIC_MARKER"
