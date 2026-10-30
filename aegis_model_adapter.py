@@ -21,7 +21,7 @@ from aegis_reporting import canonical
 from aegis_supervisor import ExecutionDenied, deny
 
 MAX_MODEL = 768
-ACTIONS=frozenset({"source_review","dependency_intelligence","local_contract",
+ACTIONS=frozenset({"source_review","source_audit","dependency_intelligence","local_contract",
     "http_metadata","report","admit_report","investigate","progress_investigation",
     "remediation_retest","notify"})
 

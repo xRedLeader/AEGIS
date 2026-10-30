@@ -22,7 +22,15 @@ jobs:
       - name: Unprivileged policy and schema tests
         env:
           PYTHONPATH: tests
-        run: .venv/bin/python -m unittest test_preflight test_report_schema test_egress.BrokerInputTests test_credentials test_operator_service test_v18_reporting test_v19_investigation.PlannerTests test_v19_evidence.MultiRunTests -v
+        run: .venv/bin/python -m unittest test_preflight test_report_schema test_egress.BrokerInputTests test_credentials test_operator_service test_v18_reporting test_v19_investigation.PlannerTests test_v19_evidence.MultiRunTests test_v21_source_audit -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pinned upstream validators and shared coverage fixtures
+        run: |
+          node --test third_party/cloudflare-security-audit/security-audit/validate-coverage-ledger.test.cjs third_party/cloudflare-security-audit/security-audit/validate-findings.test.cjs
+          node tests/source_audit_parity.cjs
+          (cd third_party/cloudflare-security-audit && sha256sum --check SHA256SUMS.txt)
   kernel:
     name: Kernel / ${{ matrix.os }} / system Python
     runs-on: ${{ matrix.os }}
@@ -77,7 +85,7 @@ jobs:
 
   source_snapshot:
     name: Export tracked feature branch for independent testing
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/v1.5-credential-approvals' || github.ref == 'refs/heads/feat/v1.7-bounded-reproduction' || github.ref == 'refs/heads/feat/v1.8-findings-reporting' || github.ref == 'refs/heads/feat/v1.9-investigation-orchestrator' || github.ref == 'refs/heads/feat/v2.0-integrated-assessment')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/v1.5-credential-approvals' || github.ref == 'refs/heads/feat/v1.7-bounded-reproduction' || github.ref == 'refs/heads/feat/v1.8-findings-reporting' || github.ref == 'refs/heads/feat/v1.9-investigation-orchestrator' || github.ref == 'refs/heads/feat/v2.0-integrated-assessment' || github.ref == 'refs/heads/codex/v2.1-security-audit')
     runs-on: ubuntu-24.04
     permissions:
       contents: read

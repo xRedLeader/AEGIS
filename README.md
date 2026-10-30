@@ -1,4 +1,4 @@
-# AEGIS v2.0 — bounded authorized assessment
+# AEGIS v2.1 — bounded authorized assessment and source research
 
 AEGIS is a provider-independent assessment runner for explicitly authorized
 source repositories and staging services. An operator signs the scope and pins
@@ -6,8 +6,8 @@ the allowed workflow. A delegated agent can inspect its state or propose its
 exact next approved step. Assessment workers run inside Linux namespaces with
 default-deny seccomp; the model receives no general shell, vault or signing key.
 
-**Status: implementation candidate in [PR #8](https://github.com/xRedLeader/AEGIS/pull/8).
-Production approval is pending.** The current release evidence and remaining
+**Status: v2.0 merged in [PR #8](https://github.com/xRedLeader/AEGIS/pull/8);
+v2.1 source-audit implementation candidate. Production approval is pending.** The existing release evidence and remaining
 inputs are collected in [the review handoff](V2_0_REVIEW_HANDOFF.md).
 [Release acceptance](V2_0_RELEASE_ACCEPTANCE.md) defines the existing merge,
 release and deployment gates; [host acceptance](V2_0_HOST_ACCEPTANCE.md) provides
@@ -20,6 +20,7 @@ reviewer or actual deployment-host fields.
 |---|---|
 | Signed authorization | Ed25519 scope, pinned verification keys, independent trust/revocation policy, expiry, stop and persistent budgets |
 | Source review | Fixed heuristic worker; authorized repository mounted read-only/noexec; no network or repository code execution |
+| v2.1 source research | Pinned Cloudflare guides, deterministic coverage, signed independent research roles, source-line checks and repeated-run revalidation; external adapters supply agents |
 | Dependency intelligence | Offline inventory and operator-attested OSV snapshots; exact-version leads with range uncertainty retained |
 | Local contract testing | Pinned Python tenant, JSON authorization and versioned-state contracts; bounded trials and fresh isolated replay |
 | HTTP/HTTPS metadata | Approved GET/HEAD origin and route, checked DNS addresses, pinned numeric endpoint, verified TLS and one brokered connection |
@@ -32,8 +33,9 @@ reviewer or actual deployment-host fields.
 
 The workflow's completed status means its configured local operations finished.
 Finding confirmation, deployed impact and remediation retain their independent
-review requirements. Cloudflare's coverage-led audit methodology is planned
-separately for [v2.1](V2_1_CLOUDFLARE_AUDIT_PLAN.md).
+review requirements. [The v2.1 source-audit guide](V2_1_SOURCE_AUDIT.md) explains
+configuration, role replies, incremental audits, limits and integration. Research
+agents cannot promote a finding to confirmed without the existing staging proof.
 
 ## Requirements and verification
 

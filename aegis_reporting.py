@@ -12,6 +12,7 @@ import ctypes
 import errno
 from datetime import datetime, timezone
 import hashlib
+import html
 import json
 import os
 from pathlib import Path
@@ -32,7 +33,7 @@ MAX_REPORT = 65536
 ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 SAFE_ID = re.compile(r"[@.A-Za-z0-9_][@A-Za-z0-9._/-]{0,180}\Z")
 FAMILIES = {"bounded-fuzz.json": "bounded_fuzz", "source-review.json": "source_review",
-            "advisory-candidates.json": "osv_advisory"}
+            "advisory-candidates.json": "osv_advisory", "source-audit.json": "source_audit"}
 RULE_IDS = {"PY-SHELL-TRUE", "PY-PICKLE-LOAD", "PY-EVAL", "PY-TLS-NOVERIFY",
             "JS-TLS-NOVERIFY", "JS-EVAL"}
 
@@ -58,6 +59,9 @@ def limited_int(value, maximum):
 
 def projection(raw: bytes, filename: str, eid: str, run_id: str, ended: str):
     """Allowlist source evidence; never accept asserted severities or impact."""
+    if filename == "source-audit.json":
+        from aegis_audit_reporting import research_projection
+        return research_projection(raw, eid, run_id, ended)[0]
     if filename not in FAMILIES or not 0 < len(raw) <= MAX_EVIDENCE:
         deny("unsupported bounded evidence")
     try:
@@ -146,6 +150,13 @@ def projection(raw: bytes, filename: str, eid: str, run_id: str, ended: str):
 
 def markdown(report):
     """Derive every public-facing view from one schema-validated source."""
+    if report.get("source_evidence", {}).get("kind") == "source_audit":
+        # Keep legacy packages byte-stable; new agent prose must not render links/HTML.
+        report = json.loads(canonical(report))
+        for item in report["findings"]:
+            for key in ("title", "affected_asset", "description", "blocker", "validation_plan", "rejection_reason"):
+                if key in item:
+                    item[key] = re.sub(r"([\\`*_{}\[\]()#+.!|])", r"\\\1", html.escape(item[key]))
     findings = report["findings"]
     eid = report["engagement_id"]
     run = report["source_run_id"]
@@ -333,9 +344,9 @@ class ReportingSupervisor(AegisSupervisor):
             try:
                 st = os.fstat(fd)
                 if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid() or
-                        st.st_mode & 0o077 or st.st_nlink != 1 or not 0 < st.st_size <= MAX_EVIDENCE):
+                        st.st_mode & 0o077 or st.st_nlink != 1 or not 0 < st.st_size <= (262144 if filename == "source-audit.json" else MAX_EVIDENCE)):
                     deny("evidence must be private, bounded and unlinkable")
-                raw = os.read(fd, MAX_EVIDENCE + 1)
+                raw = os.read(fd, (262144 if filename == "source-audit.json" else MAX_EVIDENCE) + 1)
                 if len(raw) != st.st_size: deny("evidence source changed during read")
                 after = os.fstat(fd)
                 if (st.st_ino, st.st_dev, st.st_size) != (after.st_ino, after.st_dev, after.st_size):
@@ -387,10 +398,17 @@ class ReportingSupervisor(AegisSupervisor):
             try: verify_rows(con.execute("SELECT seq,event,previous_hash,digest FROM audit ORDER BY seq").fetchall())
             except AuditError as exc: raise ExecutionDenied("report audit verification failed") from exc
         raw = self._read_source(info, run_id, filename)
+        proofs = None
+        if filename == "source-audit.json":
+            from aegis_source_audit import retained
+            from aegis_audit_reporting import research_projection
+            if canonical(retained(self, info, run_id)) != raw:
+                deny("source audit changed during report validation")
+            _, proofs = research_projection(raw, eid, run_id, record[1])
         canonical_report = projection(raw, filename, eid, run_id, record[1])
         result = canonical(canonical_report)
         digest = hashlib.sha256(result).hexdigest()
-        package = report_package(canonical_report)
+        package = report_package(canonical_report, proofs)
         self._guard()  # revocation/stop before persisting any new artifact
         dest = Path(info["report_directory"]) / "assessments" / run_id
         with self._database() as con:

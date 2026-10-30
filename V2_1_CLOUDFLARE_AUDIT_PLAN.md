@@ -1,19 +1,21 @@
-# AEGIS v2.1 — Cloudflare security-audit-skill integration (planned)
+# AEGIS v2.1 — Cloudflare security-audit-skill integration
 
-**Roadmap only; NOT implemented by v1.7.** The v2.0 milestone remains the
-integrated AEGIS assessment platform. v2.1 will add Cloudflare's research
-orchestration methodology without replacing the kernel- and operator-enforced
-execution boundary.
+**Implementation candidate.** The bounded source-only adaptation is implemented
+in `aegis_audit_coordinator.py` and `aegis_source_audit.py`, with the existing
+reporter, signed assessment steps and independent staging-proof boundary retained.
+[V2_1_SOURCE_AUDIT.md](V2_1_SOURCE_AUDIT.md) is the operational guide and describes
+the external-agent adapter contract, resource bounds and explicit prior-run selection.
 
 Upstream: https://github.com/cloudflare/security-audit-skill/tree/main/skills/security-audit
 
 Reviewed upstream `main` at commit
 `c1c8a8c1471069fb0e188eeaff69b8e8db6564a8` (October 2026).
 The upstream is **MIT licensed**; retain required attribution and license if
-copying/adapting substantial portions. Recheck its current content and supply
-chain when implementation begins; do not automatically execute upstream scripts.
+copying/adapting substantial portions. Original files, license and checksums are
+retained under `third_party/cloudflare-security-audit/`. The application ports
+bounded invariants; upstream scripts run only in development/parity tests.
 
-## Intended v2.1 additions
+## Implemented v2.1 additions and their boundaries
 
 1. **Deterministic coverage ledger:** canonical coverage units for entry surface,
    trust boundary, subsystem, attack class, and applicable lifecycle mode;
@@ -53,3 +55,18 @@ Cloudflare validators into the trusted broker without independent review.
   false confirmations, unverifiable references and altered evidence artifacts.
 - Existing AEGIS kernel isolation, operator approvals and budget/revocation
   tests continue passing across supported deployment environments.
+
+## Verification entry points
+
+`tests/test_v21_source_audit.py` covers signed role separation, source and excerpt
+hashes, budget reservations, incremental review, final-critic gaps, whole-audit
+replay across concurrency/restart, altered evidence, stop controls, inert report
+rendering and the integrated action. The full existing suite remains required.
+
+`tests/fixtures/source-audit-coverage.json` contains shared valid/adversarial
+ledger cases. Python tests and `node tests/source_audit_parity.cjs` check the
+same cases; the pinned upstream's own 65 tests run separately in CI. The original
+vendor checksum manifest and repository-wide `SHA256SUMS.txt` must both match.
+
+This implementation review does not substitute for independent human review,
+configured external-agent context isolation, or deployment-host acceptance.

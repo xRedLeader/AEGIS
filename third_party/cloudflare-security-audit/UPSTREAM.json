@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/cloudflare/security-audit-skill",
+  "commit": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
+  "source_directory": "skills/security-audit",
+  "license": "MIT",
+  "copied_without_modification": ["LICENSE", "security-audit/"],
+  "runtime_use": "Reference guidance only. AEGIS ports bounded coverage and verdict invariants in Python; upstream JavaScript is used only for development parity tests."
+}

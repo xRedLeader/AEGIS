@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "configured": false,
+  "engagement_id": "replace-with-signed-engagement-id",
+  "repository": "/srv/approved/repository",
+  "profile": "standard",
+  "max_invocations": 32,
+  "source_paths": ["app.py"],
+  "units": [
+    {
+      "canonical_refs": {
+        "surface": "http-entrypoint",
+        "boundary": "untrusted-request-to-handler",
+        "subsystem": "request-handler",
+        "attack_class": "authorization"
+      },
+      "starting_paths": ["app.py"],
+      "guides": ["ATTACK-CLASSES.md", "WEB-PROTOCOL-AND-AUTH.md"],
+      "exclusion": null
+    }
+  ],
+  "agents": [],
+  "prior_run_ids": []
+}

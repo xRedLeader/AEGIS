@@ -37,6 +37,7 @@ HEX = re.compile(r"[0-9a-f]{64}\Z")
 MODULE = re.compile(r"[A-Za-z0-9_/-]{1,160}\.py\Z")
 ACTION_FIELDS = {
     "source_review": {"seconds"},
+    "source_audit": {"seconds", "audit_policy", "audit_bundle"},
     "dependency_intelligence": {"seconds", "snapshot", "signature"},
     "local_contract": {"seconds", "module", "seed", "cases", "trials", "fuzz_policy"},
     "http_metadata": {"seconds", "url", "method"},
@@ -48,7 +49,7 @@ ACTION_FIELDS = {
     "notify": {"source", "notification_policy"},
 }
 SOURCES = {
-    "report": {"source_review", "dependency_intelligence", "local_contract"},
+    "report": {"source_review", "source_audit", "dependency_intelligence", "local_contract"},
     "investigate": {"report", "admit_report"},
     "remediation_retest": {"investigate"},
     "progress_investigation": {"investigate"},
@@ -56,6 +57,7 @@ SOURCES = {
 }
 EVIDENCE_NAMES = {
     "source_review": "source-review.json",
+    "source_audit": "source-audit.json",
     "dependency_intelligence": "advisory-candidates.json",
     "local_contract": "bounded-fuzz.json",
 }
@@ -163,7 +165,7 @@ def _policy(path, info, state):
         if not isinstance(entry, dict) or entry.get("action") not in ACTION_FIELDS:
             deny("unsupported fixed assessment step")
         kind = entry["action"]
-        required_method = {"source_review": "source_review",
+        required_method = {"source_review": "source_review", "source_audit": "source_review",
                            "dependency_intelligence": "dependency_analysis",
                            "local_contract": "bounded_fuzzing",
                            "http_metadata": "controlled_http_testing"}.get(kind)
@@ -213,7 +215,7 @@ def _policy(path, info, state):
         seen[entry["id"]] = kind
     references=[]
     for entry in policy["steps"]:
-        for key in ("snapshot", "signature", "fuzz_policy", "investigation_policy", "notification_policy"):
+        for key in ("snapshot", "signature", "fuzz_policy", "investigation_policy", "notification_policy", "audit_policy", "audit_bundle"):
             if key in entry:
                 references.append((entry["id"], key, entry[key],
                                    _pinned_reference(entry[key],info,state)))
@@ -290,6 +292,7 @@ class IntegratedAssessment(AegisSupervisor):
     def _valid_result(kind, record):
         shape={
             "source_review":{"action","run_id","evidence"},
+            "source_audit":{"action","run_id","evidence","research_status"},
             "dependency_intelligence":{"action","run_id","evidence","snapshot_sha256"},
             "local_contract":{"action","run_id","evidence"},
             "http_metadata":{"action","request_id","status"},
@@ -317,6 +320,8 @@ class IntegratedAssessment(AegisSupervisor):
             deny("integrated retest must remain a bounded, unverified observation")
         if "evidence" in record and record["evidence"]!=EVIDENCE_NAMES[kind]:
             deny("integrated outcome changed evidence type")
+        if kind=="source_audit" and record["research_status"] not in ("incomplete","source_review_complete"):
+            deny("research outcome asserted unsupported completeness")
         if kind=="http_metadata" and record["status"]!="SCOPED_HTTP_METADATA_ONLY":
             deny("unexpected HTTP outcome")
         if kind=="notify" and record["status"]!="LOCAL_DELIVERY_ACKNOWLEDGED":
@@ -449,6 +454,13 @@ class IntegratedAssessment(AegisSupervisor):
         kind=entry["action"]
         args=(self.manifest_path,self.signature_path,self.trust_path,self.state_root)
         repo=Path(policy["repository"])
+        if kind=="source_audit":
+            from aegis_source_audit import SourceAuditSupervisor
+            result=SourceAuditSupervisor(*args).research(Path(entry["audit_policy"]),
+                Path(entry["audit_bundle"]), accept=True, seconds=entry["seconds"], expected_repository=repo)
+            if result.get("status")!="SOURCE_AUDIT_RECORDED": deny("source audit not recorded")
+            return {"action":kind,"run_id":result["run_id"],"evidence":"source-audit.json",
+                    "research_status":result["research_status"]}
         if kind=="source_review":
             result=AegisSupervisor(*args).scan(repo,budget_seconds=entry["seconds"])
             if result.get("status")!="COMPLETED_STATIC_REVIEW_ONLY": deny("source review did not complete")
