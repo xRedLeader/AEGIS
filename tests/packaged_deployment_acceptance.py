@@ -90,7 +90,9 @@ def run(args):
                               input=None if data is None else canonical(data),capture_output=True,timeout=60,cwd="/",preexec_fn=demote,
                               env={"PATH":"/usr/bin:/bin","PYTHONDONTWRITEBYTECODE":"1"})
         require(result.returncode==0,"fixture client failed: "+result.stderr.decode(errors="replace")[-1800:])
-        return json.loads(result.stdout.splitlines()[-1])
+        # A framed receiver ACK already ends in a newline; print adds another.
+        # Parse the complete JSON document, including legal trailing whitespace.
+        return json.loads(result.stdout)
 
     folder=policy/"operator";eid="packaged-ci-only"
     alert=Path(cfg["report_root"])/"alerts";alert.mkdir();os.chown(alert,op["uid"],op["gid"]);alert.chmod(0o700)
