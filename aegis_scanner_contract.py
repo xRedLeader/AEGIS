@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import re
 
 from aegis_audit_contract import canonical, digest, fields, relative_path, require, text
@@ -30,7 +31,11 @@ def strict_json(raw):
             result[key] = value
         return result
     try:
+        def integer(value):
+            require(len(value) <= 64, "scanner integer exceeds bound")
+            return int(value)
         result = json.loads(raw.decode("utf-8"), object_pairs_hook=unique,
+                            parse_int=integer,
                             parse_constant=lambda _: require(False, "nonfinite scanner JSON number"))
         nodes = 0
         def bounded(value, depth=0):
@@ -44,6 +49,8 @@ def strict_json(raw):
             elif isinstance(value, str):
                 require(len(value) <= 65536 and not any(0xD800 <= ord(c) <= 0xDFFF for c in value),
                         "scanner string is invalid or oversized")
+            elif isinstance(value, float):
+                require(math.isfinite(value), "nonfinite scanner JSON number")
         bounded(result)
         return result
     except (ValueError, UnicodeError, RecursionError, OverflowError) as exc:

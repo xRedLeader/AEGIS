@@ -131,7 +131,7 @@ class ScannerAdmissionTests(ReportFixture):
         with self.assertRaises(ExecutionDenied): self.admit()
 
     def test_strict_json_bounds_and_stop(self):
-        for raw in (b'{"x":1,"x":2}', b'{"x":NaN}', b'['*40+b'0'+b']'*40, b' '* (MAX_INPUT+1)):
+        for raw in (b'{"x":1,"x":2}', b'{"x":NaN}', b'{"x":1e999}', b'9'*65, b'['*40+b'0'+b']'*40, b' '* (MAX_INPUT+1)):
             with self.assertRaises(ExecutionDenied): strict_json(raw)
         operator_stop(self.fx.state, self.admission["engagement_id"])
         with self.assertRaises(ExecutionDenied): self.admit()

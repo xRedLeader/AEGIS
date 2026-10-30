@@ -18,24 +18,27 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Verify complete source artifact
         run: python3 aegis_source_integrity.py
       - name: Prepare protected pinned runtime
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y python3-venv libseccomp2 apparmor apparmor-utils
-          sudo python3 -m venv /opt/aegis-package-runtime
-          sudo /opt/aegis-package-runtime/bin/pip install --disable-pip-version-check -r deployment/requirements.lock
-          sudo /opt/aegis-package-runtime/bin/pip uninstall -y setuptools
+          stat -c '%u %a %n' /srv /etc /var/lib /run
+          sudo python3 -m venv /srv/aegis-package-runtime
+          sudo /srv/aegis-package-runtime/bin/pip install --disable-pip-version-check -r deployment/requirements.lock
+          sudo /srv/aegis-package-runtime/bin/pip uninstall -y setuptools
       - name: Exercise actual installed units
         run: |
-          sudo --preserve-env=GITHUB_ACTIONS /opt/aegis-package-runtime/bin/python tests/packaged_deployment_acceptance.py \
+          sudo --preserve-env=GITHUB_ACTIONS /srv/aegis-package-runtime/bin/python tests/packaged_deployment_acceptance.py \
             --source "$PWD" --commit "$(git rev-parse HEAD)" --output "$PWD/packaged-deployment-evidence.json"
       - name: Retain exact-commit service evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: packaged-deployment-${{ matrix.os }}-${{ github.sha }}
+          name: packaged-deployment-${{ matrix.os }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: packaged-deployment-evidence.json
           if-no-files-found: warn
           retention-days: 30

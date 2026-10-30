@@ -1,7 +1,7 @@
 """Pure Trivy/Grype and ZAP/Nuclei report parsers. No scanner execution or I/O."""
 import base64
 import binascii
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import re
 from urllib.parse import unquote, urlsplit
@@ -9,7 +9,7 @@ from urllib.parse import unquote, urlsplit
 from aegis_audit_contract import require
 from aegis_scanner_contract import identifier, observation, sha256, VERSION
 
-PACKAGE_RELEASES = {("trivy", "0.58.2", "trivy-json-v2"), ("grype", "0.85.0", "grype-json-v0.85")}
+PACKAGE_RELEASES = {("trivy", "0.58.2", "trivy-json-v2"), ("trivy", "0.76.1", "trivy-json-v2"), ("grype", "0.85.0", "grype-json-v0.85")}
 STAGING_RELEASES = {("nuclei", "3.3.8", "nuclei-json-export-v3.3.8"),
                     ("zap", "reports-0.35.0", "traditional-json")}
 TRIVY_TYPES = {"npm": "npm", "node-pkg": "npm", "pip": "PyPI", "python-pkg": "PyPI",
@@ -19,13 +19,28 @@ GRYPE_TYPES = {"npm": "npm", "python": "PyPI", "dotnet": "NuGet", "java-archive"
 
 
 def _stamp(value):
+    """UTC nanoseconds without Python-version-dependent ISO parsing or rounding."""
     require(isinstance(value, str) and len(value) <= 64, "missing scanner timestamp")
+    match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.([0-9]{1,9}))?(Z|[+-][0-9]{2}:[0-9]{2})", value, re.ASCII)
+    require(match is not None, "invalid scanner RFC3339 timestamp")
     try:
-        result = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
+        zone = match[8]
+        offset = timedelta(0)
+        if zone != "Z":
+            hours, minutes = int(zone[1:3]), int(zone[4:6])
+            require(hours <= 23 and minutes <= 59, "invalid scanner timezone offset")
+            offset = timedelta(hours=hours, minutes=minutes) * (-1 if zone[0] == "-" else 1)
+        result = datetime(*(int(match[i]) for i in range(1, 7)), tzinfo=timezone(offset))
+        elapsed = result.astimezone(timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    except (ValueError, OverflowError):
         require(False, "invalid scanner timestamp")
-    require(result.tzinfo is not None, "scanner timestamp lacks timezone")
-    return result.astimezone(timezone.utc)
+    return (elapsed.days * 86400 + elapsed.seconds) * 1_000_000_000 + int((match[7] or "0").ljust(9, "0"))
+
+
+def _whole_second(value):
+    # Package admission's observed_at is explicitly a whole UTC second. Staging
+    # interval and database comparisons always retain the full event precision.
+    return _stamp(value) // 1_000_000_000 * 1_000_000_000
 
 
 def _release(policy, supported):
@@ -131,7 +146,7 @@ def parse_package_report(doc, policy, context):
                 require(any(isinstance(d, str) and d.endswith("@" + selected["image_digest"]) for d in digests),
                         "Trivy report lacks the approved immutable image manifest")
         if doc.get("CreatedAt"):
-            require(_stamp(doc["CreatedAt"]).replace(microsecond=0) == _stamp(policy["observed_at_utc"]),
+            require(_whole_second(doc["CreatedAt"]) == _stamp(policy["observed_at_utc"]),
                     "Trivy observed time differs from admission")
         else:
             limitations.append("Trivy report omits observed time; the approved scan time is externally attested.")
@@ -155,7 +170,7 @@ def parse_package_report(doc, policy, context):
         if descriptor.get("version") == "[not provided]":
             limitations.append("Grype exporter omits build identity; the protected producer attestation supplies the pinned release.")
         if descriptor.get("timestamp"):
-            require(_stamp(descriptor["timestamp"]).replace(microsecond=0) == _stamp(policy["observed_at_utc"]),
+            require(_whole_second(descriptor["timestamp"]) == _stamp(policy["observed_at_utc"]),
                     "Grype observed time differs from admission")
         database = descriptor.get("db")
         if database:

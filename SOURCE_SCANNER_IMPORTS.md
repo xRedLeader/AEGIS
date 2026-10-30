@@ -27,6 +27,8 @@ hashes. The files in `reports/` were exported by those actual tools on Ubuntu 24
 over the adjacent synthetic `source/` and `safe-source/` files. Tests mutate copies
 in memory for adversarial cases; those mutations are not presented as vendor
 exports. No real credentials or application data appear in the fixtures.
+`codeql-config-manifest.json` additionally binds every custom query/lock file and
+the exact downloaded library file-tree digests used for these captures.
 
 Semgrep's Python dependencies are recorded in `semgrep-requirements.lock.txt`;
 its legacy dependency requires the included setuptools 80.9.0 pin. CodeQL uses
@@ -62,8 +64,9 @@ semgrep scan --config /protected/approved-rules.yaml --metrics=off \
 codeql database analyze /protected/approved-database /protected/pinned-query-pack \
   --format=sarifv2.1.0 --output=/protected/codeql.sarif
 
+cd /approved/source
 gitleaks dir --config /protected/approved-gitleaks.toml --redact=100 \
-  --report-format=json --report-path=/protected/gitleaks.json /approved/source
+  --report-format=json --report-path=/protected/gitleaks.json .
 ```
 
 Use the common `scanner-admission-policy.example.json` and CLI documented in
@@ -87,7 +90,7 @@ column ranges. Absolute, external, traversing, encoded/ambiguous paths, inconsis
 SARIF indices, unapproved rules and changed source are rejected. SARIF locations
 use the selected snapshot as `%SRCROOT%`; diagnostic prose and source-root URLs
 never create filesystem or network authority. An export containing over 64
-observations or a source range of 80 or more line differences is rejected, not
+observations or a source range longer than 80 lines is rejected, not
 silently truncated. Reports must fit the shared 512-KiB input bound.
 
 ## Secret handling and historical scope

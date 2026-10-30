@@ -154,7 +154,7 @@ class SourceAdmissionTests(unittest.TestCase):
             revision = strict_json(report(filename))[0]["Commit"]
             h.admission["input"] = {"kind":"history","repository":str(h.fx.fx.repo),"revisions":{revision:h.admission["input"]["files"]}}
             (h.fx.fx.repo/"secrets-positive.txt").write_text("Current working tree is deliberately different.\n")
-        config = (FIXTURE/("gitleaks.toml" if name=="gitleaks" else "semgrep.yaml" if name=="semgrep" else "capture.json")).read_bytes()
+        config = (FIXTURE/("gitleaks.toml" if name=="gitleaks" else "semgrep.yaml" if name=="semgrep" else "codeql-config-manifest.json")).read_bytes()
         h.config_path.write_bytes(config)
         h.admission["configuration"]["sha256"] = hashlib.sha256(config).hexdigest()
         self.write_report(report(filename))

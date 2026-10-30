@@ -226,7 +226,8 @@ class ScannerImportSupervisor(ReportingSupervisor):
         require(hashlib.sha256(raw).hexdigest() == policy["report_sha256"], "scanner report digest differs from protected admission")
         config = read(Path(policy["configuration"]["path"]), MAX_INPUT)
         require(hashlib.sha256(config).hexdigest() == policy["configuration"]["sha256"], "scanner configuration identity changed")
-        method = "dependency_analysis" if policy["input"].get("kind") in {"sbom", "image"} or policy["detector"]["name"] in {"pip-audit", "npm-audit", "trivy", "grype"} else "source_review"
+        method = ("controlled_http_testing" if policy["input"].get("kind") == "staging" else
+                  "dependency_analysis" if policy["input"].get("kind") in {"sbom", "image"} or policy["detector"]["name"] in {"pip-audit", "npm-audit", "trivy", "grype"} else "source_review")
         info, scope, run_id = self.reserve(seconds, method)
         deadline = time.monotonic() + seconds
         def guard():

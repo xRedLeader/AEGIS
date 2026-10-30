@@ -54,7 +54,7 @@ def run(args):
     cfg=json.loads((args.source/"deployment/install.example.json").read_bytes())
     cfg.update(configured=True,source_commit=args.commit,
                source_manifest_sha256=hashlib.sha256((args.source/"SHA256SUMS.txt").read_bytes()).hexdigest(),
-               python=sys.executable,install_root="/opt/aegis-package-ci",policy_root="/etc/aegis-package-ci",
+               python=sys.executable,install_root="/srv/aegis-package-ci",policy_root="/etc/aegis-package-ci",
                state_root="/var/lib/aegis-package-controller",report_root="/var/lib/aegis-package-reports",
                receiver_state_root="/var/lib/aegis-package-receiver",agent_state_root="/var/lib/aegis-package-agent",
                runner_root="/var/lib/aegis-package-runner",run_root="/run/aegis-package-ci",

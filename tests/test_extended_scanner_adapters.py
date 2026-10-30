@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from aegis_audit_contract import canonical
-from aegis_extended_scanner_adapters import parse_package_report, parse_staging_report
+from aegis_extended_scanner_adapters import _stamp, parse_package_report, parse_staging_report
 from aegis_http_policy import HttpPolicyDenied
 from aegis_scanner_contract import normalize, strict_json
 from aegis_supervisor import ExecutionDenied
@@ -17,6 +17,28 @@ FIXTURES = Path(__file__).parent / "fixtures" / "scanner-exports"
 
 
 class ExtendedScannerAdapterTests(unittest.TestCase):
+    def test_rfc3339_nanoseconds_and_offsets_preserve_interval_boundaries(self):
+        self.assertEqual(_stamp("2026-10-30T13:53:44.56929556-05:00"), _stamp("2026-10-30T18:53:44.569295560Z"))
+        self.assertEqual(_stamp("2026-10-31T00:23:44.56929556+05:30"), _stamp("2026-10-30T18:53:44.569295560Z"))
+        self.assertEqual(_stamp("1970-01-01T00:00:00.000000001Z"), 1)
+        self.assertEqual(_stamp("1969-12-31T23:59:59.999999999Z"), -1)
+        for invalid in ("2026-10-30 18:53:44Z", "2026-10-30T18:53:44", "2026-10-30T18:53:60Z",
+                        "2026-10-30T18:53:44.0000000001Z", "2026-10-30T18:53:44+24:00", "2026-10-30T18:53:44+00:60"):
+            with self.subTest(timestamp=invalid), self.assertRaises(ExecutionDenied):
+                _stamp(invalid)
+        for stamp, accepted in (("2026-10-30T18:53:44.999999999Z", True),
+                                ("2026-10-30T18:53:45.000000000Z", True),
+                                ("2026-10-30T18:53:45.000000001Z", False),
+                                ("2026-10-30T18:53:43.999999999Z", False)):
+            doc, policy, context = self.staging()
+            doc[0]["timestamp"] = stamp
+            with self.subTest(timestamp=stamp):
+                if accepted:
+                    self.assertEqual(len(parse_staging_report(doc, policy, context)["observations"]), 1)
+                else:
+                    with self.assertRaises(ExecutionDenied):
+                        parse_staging_report(doc, policy, context)
+
     def test_fixture_export_bytes_match_recorded_provenance(self):
         provenance = json.loads((FIXTURES/"provenance.json").read_bytes())
         for fixture in provenance["fixtures"]:
@@ -234,8 +256,8 @@ class ExtendedScannerAdmissionTests(unittest.TestCase):
         origin = "https://staging.test.example"
         self.base.manifest["targets"]["origins"] = [origin]
         self.base.trust["allowed_origins"] = [origin]
-        self.base.manifest["methods"]["allowed"].append("controlled_http_testing")
-        self.base.trust["approved_methods"].append("controlled_http_testing")
+        self.base.manifest["methods"]["allowed"] = ["controlled_http_testing"]
+        self.base.trust["approved_methods"] = ["controlled_http_testing"]
         self.base.manifest["limits"].update(max_total_requests=1, max_requests_per_minute_per_origin=1,
             max_concurrent_requests=1, max_total_response_bytes=self.base.manifest["limits"]["max_response_body_bytes"])
         self.base.save()
