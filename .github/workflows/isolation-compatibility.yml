@@ -77,7 +77,7 @@ jobs:
 
   source_snapshot:
     name: Export tracked feature branch for independent testing
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/v1.5-credential-approvals' || github.ref == 'refs/heads/feat/v1.7-bounded-reproduction' || github.ref == 'refs/heads/feat/v1.8-findings-reporting' || github.ref == 'refs/heads/feat/v1.9-investigation-orchestrator')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/v1.5-credential-approvals' || github.ref == 'refs/heads/feat/v1.7-bounded-reproduction' || github.ref == 'refs/heads/feat/v1.8-findings-reporting' || github.ref == 'refs/heads/feat/v1.9-investigation-orchestrator' || github.ref == 'refs/heads/feat/v2.0-integrated-assessment')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -90,8 +90,18 @@ jobs:
         with:
           name: aegis-assessment-source
           path: /tmp/aegis-assessment-source.zip
-          retention-days: 1
+          retention-days: 30
           if-no-files-found: error
+
+  tracked_source_integrity:
+    name: v2.0 tracked source consistency / ubuntu-24.04
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact tracked files and manifest digests
+        run: /usr/bin/python3 aegis_source_integrity.py
 
   notification_cross_uid:
     name: v1.8 separate-UID receiver / ubuntu-24.04
@@ -107,3 +117,18 @@ jobs:
           .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
       - name: Verify distinct sender and receiver OS identities
         run: sudo -n .venv/bin/python tests/cross_uid_receiver_acceptance.py --sender-uid "$(id -u)" --sender-gid "$(id -g)"
+
+  agent_delegation_cross_uid:
+    name: v2.0 signed agent delegation / distinct UIDs / ubuntu-24.04
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install existing dependencies
+        run: |
+          /usr/bin/python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Test protected signed agent gateway across distinct UIDs
+        run: sudo -n .venv/bin/python tests/cross_uid_agent_acceptance.py --sender-uid "$(id -u)" --sender-gid "$(id -g)"

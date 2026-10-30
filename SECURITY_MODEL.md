@@ -95,3 +95,11 @@ recovery cannot bypass stop/revocation or convert a local negative result into
 an independently verified production fix. This is **not** an agent tool and
 must not be exposed through the credential-control Unix socket or any
 unrestricted shell bridge.
+
+## v2.0 composition boundary (development)
+
+The integrated controller is a trusted operator process, not an agent-facing command runner. It admits only a bounded private canonical action policy, pins the signed manifest and operator policy bytes, and delegates each fixed operation to its existing independently authorized supervisor. No new untrusted worker authority is introduced. Persistent step results are typed, audited and lease-fenced. An expired action is **not** re-executed without operator reconciliation; completing a local pipeline is not evidence of real-world exploitability or remediation. See `V2_0_INTEGRATED_ASSESSMENT.md`.
+
+## v2.0 delegation and recovery additions
+
+The separate signed delegated-agent gateway requires both Linux peer UID and Ed25519 grant/request signatures, expiry, policy-byte binding and durable request replay prevention. It cannot create assessments, edit policy, access credentials or select arbitrary targets. The trusted operator controller executes only the next fixed approved action. Referenced tool policies and OSV snapshot bytes are pinned across the workflow; changing any input blocks continuation. Explicit operator abandonment records a terminal audit event but does not roll back a prior side effect. See `V2_0_RELEASE_ACCEPTANCE.md`.
