@@ -55,9 +55,14 @@ def relative_parts(absolute: Path):
 
 
 @contextmanager
-def open_directory_nofollow(directory: Path, create: bool = False):
-    """Safely walk every POSIX path component without following symlinks."""
-    fd = os.open("/", O_DIR)
+def open_directory_nofollow(directory: Path, create: bool = False, *, path_only: bool = False):
+    """Safely walk components; optional O_PATH needs traversal, not read access."""
+    flags = O_DIR
+    if path_only:
+        if create or not hasattr(os, "O_PATH"):
+            deny("path-only traversal requires Linux O_PATH and cannot create directories")
+        flags |= os.O_PATH
+    fd = os.open("/", flags)
     try:
         for part in relative_parts(directory):
             if create:
@@ -65,7 +70,7 @@ def open_directory_nofollow(directory: Path, create: bool = False):
                     os.mkdir(part, mode=0o700, dir_fd=fd)
                 except FileExistsError:
                     pass
-            nxt = os.open(part, O_DIR, dir_fd=fd)
+            nxt = os.open(part, flags, dir_fd=fd)
             os.close(fd)
             fd = nxt
         yield fd

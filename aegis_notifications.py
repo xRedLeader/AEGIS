@@ -77,7 +77,9 @@ def _trusted_socket(path: Path, allowed_uids):
     Modes 0700/0600 support same-UID integrations; modes 0710/0660 support a
     deliberately shared operator/receiver group. World permissions are denied.
     """
-    with open_directory_nofollow(path.parent) as directory:
+    # Shared receivers deliberately grant directory search, not directory-list
+    # access. Retain nofollow/stat checks without requiring O_RDONLY permission.
+    with open_directory_nofollow(path.parent, path_only=True) as directory:
         parent = os.fstat(directory)
         if (parent.st_uid not in (0, os.geteuid(), *allowed_uids) or
                 parent.st_mode & 0o007 or parent.st_mode & 0o020 or

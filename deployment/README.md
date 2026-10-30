@@ -98,6 +98,9 @@ another role's files or granting directory writes.
 The gateway socket is `<run_root>/gateway/agent.sock`; the receiver socket is
 `<run_root>/receiver/receiver.sock`. Their directories are owned by the relevant
 service UID, mode `0710`, with the configured shared group. Sockets are `0660`.
+The notification sender uses nofollow `O_PATH` directory traversal, so it can
+verify socket custody through the group's search permission without directory
+read access. Parent/file ownership and mode checks still apply.
 The gateway admits only the configured adapter UID, and the receiver admits only
 the configured operator UID. Unix group access does not replace these peer checks.
 

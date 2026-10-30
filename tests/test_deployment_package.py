@@ -11,7 +11,8 @@ from unittest.mock import patch
 
 from aegis_install import config, render_units, source_files, runtime_versions
 from aegis_service_entry import prepare_socket
-from aegis_supervisor import ExecutionDenied
+from aegis_supervisor import ExecutionDenied,open_directory_nofollow
+from aegis_notifications import _trusted_socket
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -102,3 +103,23 @@ class PackageTests(unittest.TestCase):
             path.unlink();path.symlink_to(root/"missing")
             with self.assertRaises(ExecutionDenied):prepare_socket(path,os.getuid(),os.getgid())
             self.assertTrue(path.is_symlink())
+
+    def test_notification_socket_search_does_not_require_directory_read_access(self):
+        self.assertNotEqual(os.geteuid(),0,"directory permission regression requires a real nonroot test identity")
+        with tempfile.TemporaryDirectory() as tmp:
+            base=Path(tmp);folder=base/'receiver';folder.mkdir(mode=0o700);path=folder/'service.sock'
+            server=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);server.bind(str(path));path.chmod(0o660)
+            folder.chmod(0o110)
+            try:
+                with self.assertRaises(PermissionError):
+                    with open_directory_nofollow(folder):pass
+                identity=_trusted_socket(path,[os.geteuid()])
+                self.assertEqual(identity[2],os.geteuid())
+                with open_directory_nofollow(folder,path_only=True) as descriptor:
+                    self.assertEqual(os.fstat(descriptor).st_ino,folder.stat().st_ino)
+                    with self.assertRaises(OSError):os.listdir(descriptor)
+                alias=base/'alias';alias.symlink_to(folder,target_is_directory=True)
+                with self.assertRaises(OSError):_trusted_socket(alias/'service.sock',[os.geteuid()])
+                alias.unlink();alias.mkdir(mode=0o700);(alias/'service.sock').symlink_to(path)
+                with self.assertRaises(ExecutionDenied):_trusted_socket(alias/'service.sock',[os.geteuid()])
+            finally:folder.chmod(0o700);server.close()
