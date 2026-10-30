@@ -95,6 +95,25 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.manifest["candidate_sha"] = "0"*40; self.persist()
         with self.assertRaises(ExecutionDenied): self.collect()
 
+    def test_github_timestamped_logs_preserve_bytes_and_enforce_results(self):
+        prefix=b"2026-10-30T20:01:02.1234567Z "
+        def log(raw):
+            artifact=self.save(self.bundle,"original.log",raw)
+            for index,ref in enumerate(self.manifest["observations"]):
+                record=json.loads((self.bundle/ref["path"]).read_bytes())
+                record["artifacts"]=[artifact if item["path"]=="original.log" else item for item in record["artifacts"]]
+                self.manifest["observations"][index]=self.save(self.bundle,ref["path"],canonical(record))
+            self.persist()
+        raw=prefix+b"Ran 12 tests in 0.1s\n"+prefix+b"OK\n"
+        log(raw)
+        self.assertTrue(self.collect()["machine_evidence_complete"])
+        self.assertEqual((self.bundle/"original.log").read_bytes(),raw)
+        for invalid in (raw.replace(b"Ran 12",b"Ran 11"),raw+prefix+b"FAILED (failures=1)\n",
+                        raw.replace(b"1234567Z ",b"1234567+00:00 ")):
+            with self.subTest(log=invalid):
+                log(invalid)
+                self.assertFalse(self.collect()["machine_evidence_complete"])
+
     def test_native_scanner_and_packaged_service_jobs_are_required(self):
         original = list(self.manifest["observations"])
         for kind in ("ci_native_scanners_22_04", "ci_native_scanners_24_04",

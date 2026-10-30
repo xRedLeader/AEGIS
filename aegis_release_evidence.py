@@ -120,6 +120,9 @@ def collect(bundle_root, source_root, candidate, trust_path, *, now=None):
                 artifacts = [reference(root, artifact) for artifact in record["artifacts"]]
                 if record["kind"] in {"ci_ubuntu_22_04", "ci_ubuntu_24_04"}:
                     logs = b"\n".join(artifacts).decode("utf-8", "replace")
+                    # Strip GitHub's presentation prefix only after hashing the retained bytes.
+                    logs = re.sub(r"(?m)^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T"
+                                  r"(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]{1,9})?Z ", "", logs)
                     counts = re.findall(r"(?m)^Ran ([0-9]+) tests? in [^\r\n]+", logs)
                     endings = re.findall(r"(?m)^OK(?: \(([^\r\n]*)\))?\s*$", logs)
                     require(counts and int(counts[-1]) == record["details"]["tests"] and endings and

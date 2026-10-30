@@ -55,6 +55,9 @@ version-1 bundle. It is not actual deployment or CI evidence.
 References are bounded regular single-link files opened through no-follow
 directory handles. Each JSON artifact is at most 512 KiB, with bounded nesting
 and collections. Missing, changed, oversized or stale artifacts fail closed.
+GitHub job logs may prefix lines with an ISO UTC timestamp. The collector removes
+that presentation prefix only in memory after verifying each artifact hash; the
+retained bytes stay unchanged and test-count, failure and no-skip checks still apply.
 Do not put credentials/private keys in any evidence bundle. The checker does
 not certify that an operator-supplied log is truthful or fully redacted.
 

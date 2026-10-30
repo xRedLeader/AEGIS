@@ -89,7 +89,7 @@ jobs:
 
   source_snapshot:
     name: Export tracked feature branch for independent testing
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/v1.5-credential-approvals' || github.ref == 'refs/heads/feat/v1.7-bounded-reproduction' || github.ref == 'refs/heads/feat/v1.8-findings-reporting' || github.ref == 'refs/heads/feat/v1.9-investigation-orchestrator' || github.ref == 'refs/heads/feat/v2.0-integrated-assessment' || github.ref == 'refs/heads/codex/v2.1-security-audit')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/feat/v1.5-credential-approvals' || github.ref == 'refs/heads/feat/v1.7-bounded-reproduction' || github.ref == 'refs/heads/feat/v1.8-findings-reporting' || github.ref == 'refs/heads/feat/v1.9-investigation-orchestrator' || github.ref == 'refs/heads/feat/v2.0-integrated-assessment' || startsWith(github.ref, 'refs/heads/codex/'))
     runs-on: ubuntu-24.04
     permissions:
       contents: read
