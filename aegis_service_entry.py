@@ -10,6 +10,7 @@ from pathlib import Path
 import signal
 import socket
 import stat
+import subprocess
 import sys
 import threading
 
@@ -131,13 +132,20 @@ def main(argv=None):
                 "policy_read_only":True,"code_read_only":True,"runtime_read_only":True}
         if args.role=="gateway":
             from aegis_sandbox_check import run_check
-            health["kernel"]=run_check()
+            try:health["kernel"]=run_check()
+            except (RuntimeError,OSError,ValueError,subprocess.TimeoutExpired) as exc:
+                # The fixed probe contains only synthetic paths/data. Preserve
+                # its bounded diagnostic so host mount-policy failures can be
+                # distinguished without logging engagement or model material.
+                print(json.dumps({"event":"AEGIS_INSTALLED_PREFLIGHT_FAILED","role":args.role,
+                                  "check":"kernel","detail":str(exc)[:512]},sort_keys=True),file=sys.stderr,flush=True)
+                raise
         print(json.dumps(health,sort_keys=True),flush=True)
         stop=threading.Event()
         if args.role in {"gateway","receiver"}:
             for sig in (signal.SIGTERM,signal.SIGINT):signal.signal(sig,lambda *_:stop.set())
         return execute(cfg,args.role,stop)
-    except (ExecutionDenied,OSError,ValueError,TypeError,KeyError,ImportError,RuntimeError):
+    except (ExecutionDenied,OSError,ValueError,TypeError,KeyError,ImportError,RuntimeError,subprocess.TimeoutExpired):
         print("INSTALLED_SERVICE_DENIED",file=sys.stderr);return 2
 
 

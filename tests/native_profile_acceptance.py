@@ -9,6 +9,7 @@ from semgrep_execution_acceptance import run as semgrep
 from trivy_execution_acceptance import run as trivy
 from native_scanner_recovery_acceptance import confinement,failures,crash
 from semgrep_confinement_acceptance import confinement as semgrep_confinement
+from trivy_confinement_acceptance import confinement as trivy_confinement
 
 
 def run(tools,database=None):
@@ -21,6 +22,7 @@ def run(tools,database=None):
     result={'gitleaks':gitleaks(tools/'gitleaks'),'semgrep':semgrep(tools/'semgrep-core'),
             'trivy':trivy(tools/'trivy',database or tools/'trivy-db'),
             'recovery':{'kernel':confinement(tools/'native-probe'),'semgrep_kernel':semgrep_confinement(tools/'semgrep-probe'),
+                        'trivy_kernel':trivy_confinement(tools/'trivy-probe'),
                         'failure_drills':failures(tools/'native-probe'),'crash':crash(tools/'native-probe')}}
     result['unit']={'uid':os.geteuid(),'memory_max_bytes':1024**3,'tasks_max':96,'cpu_quota_percent':100,
                     'memory_peak_bytes':int((root/'memory.peak').read_text()) if (root/'memory.peak').exists() else None}

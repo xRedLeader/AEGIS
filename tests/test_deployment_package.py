@@ -31,6 +31,7 @@ class PackageTests(unittest.TestCase):
             self.assertIn("ConditionPathExists=/etc/aegis/enabled",unit)
             self.assertNotIn("RestrictNamespaces=",unit)
             self.assertNotIn("PrivateUsers=",unit)
+            self.assertNotIn("ProtectKernelModules=yes",unit)
             self.assertNotIn("User=root",unit)
         self.assertIn(b"ConditionPathExists=/etc/aegis/provider-enabled",units["aegis-provider.service"])
         self.assertIn(b"User=aegis-agent",units["aegis-agent.service"])

@@ -103,6 +103,8 @@ executable/rules bytes into a private RAM filesystem; freezes the root; drops al
 capabilities; sets no-new-privileges; and loads a separate positive native syscall
 profile. No `/usr`, `/proc`, host root, model credentials or container socket is
 mounted. Source/artifacts are read-only, scratch is 8 MiB and non-executable.
+Trivy's SBOM-only profile needs no writable files, so its scratch is read-only
+as well; there is no mutable file whose shared mapping could be upgraded later.
 Threads are allowed; new processes and sockets are denied. Trivy additionally
 allows only read-only shared file mappings for BoltDB; anonymous/shared writable
 mapping alternatives remain denied.
@@ -154,6 +156,8 @@ source integrity, prepares independently pinned tool binaries/DB, and executes
 actual positive and safe-control fixtures plus native escape/resource/recovery
 probes. The Semgrep bootstrap also has its own hostile probe, covering its
 separate root setup, closed descriptors, non-executable scratch and memory limit.
+Trivy has its own hostile probe for the separate root and database mounts,
+including attempts to turn permitted read-only shared mappings into writable ones.
 Staging execution has a separate explicit test step and network profile.
 No scanner job targets the user's deployed application. These artifacts establish
 engineering behavior for that commit; they do not replace the intended host's

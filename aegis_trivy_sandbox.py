@@ -99,7 +99,10 @@ def _setup(args):
         if fd<3 or not stat.S_ISDIR(os.fstat(fd).st_mode):raise kernel.SandboxFailure('Trivy directory capability invalid')
     _bind_fd(args.input_fd,jail/'repo',directory=True)
     (jail/'cache').mkdir();_bind_fd(args.database_fd,jail/'cache/db',directory=True)
-    (jail/'tmp').mkdir();kernel._mount('tmpfs',jail/'tmp','tmpfs',kernel.MS_NOSUID|kernel.MS_NODEV|kernel.MS_NOEXEC,'size=8m,mode=0700')
+    # This SBOM-only profile needs no writable files. Keeping scratch read-only
+    # also prevents upgrading a shared scratch mapping through mprotect after
+    # the narrowly allowed read-only BoltDB mmap operation.
+    (jail/'tmp').mkdir();kernel._mount('tmpfs',jail/'tmp','tmpfs',kernel.MS_RDONLY|kernel.MS_NOSUID|kernel.MS_NODEV|kernel.MS_NOEXEC,'size=8m,mode=0700')
     kernel._mount(None,jail,None,kernel.MS_REMOUNT|kernel.MS_RDONLY|kernel.MS_NOSUID|kernel.MS_NODEV)
     for name in os.listdir('/proc/self/fd'):
         if int(name)>2:

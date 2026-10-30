@@ -29,7 +29,8 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 ProtectKernelTunables=yes
-ProtectKernelModules=yes
+# Do not add a locked child mount beneath the worker's nonrecursive /usr bind.
+# Empty capabilities and the worker syscall policy already deny module changes.
 ProtectControlGroups=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes

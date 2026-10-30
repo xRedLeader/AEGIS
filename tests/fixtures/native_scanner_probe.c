@@ -22,6 +22,10 @@
 #define RULE_FILE "/rules.json"
 #define SOURCE_FILE "/repo/safe.js"
 #define CHECK_COUNT 16
+#elif defined(AEGIS_TRIVY_PROFILE)
+#define RULE_FILE "/rules"
+#define SOURCE_FILE "/repo/safe.env"
+#define CHECK_COUNT 17
 #else
 #define RULE_FILE "/rules"
 #define SOURCE_FILE "/repo/safe.env"
@@ -71,11 +75,30 @@ int main(void) {
   checks[12]=memory!=MAP_FAILED;
   if(memory!=MAP_FAILED){errno=0;checks[12]=mprotect(memory,600UL*1024*1024,PROT_READ|PROT_WRITE)<0 && errno==ENOMEM;munmap(memory,4UL*1024*1024*1024);}
 #endif
+#ifdef AEGIS_TRIVY_PROFILE
+  errno=0;fd=open(RULE_FILE,O_WRONLY|O_TRUNC);checks[13]=fd<0 && errno==EROFS;if(fd>=0)close(fd);
+  checks[14]=1;for(int n=3;n<64;n++){errno=0;if(fcntl(n,F_GETFD)!=-1 || errno!=EBADF)checks[14]=0;}
+  errno=0;fd=open("/tmp/shared-map-probe",O_RDWR|O_CREAT|O_EXCL,0600);checks[15]=fd<0 && errno==EROFS;if(fd>=0)close(fd);
+  fd=open("/cache/db/trivy.db",O_RDONLY);checks[16]=0;
+  if(fd>=0){
+    memory=mmap(NULL,4096,PROT_READ,MAP_SHARED,fd,0);
+    if(memory!=MAP_FAILED){
+      errno=0;checks[16]=mprotect(memory,4096,PROT_READ|PROT_WRITE)<0 && errno==EACCES;munmap(memory,4096);
+      errno=0;memory=mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+      checks[16] &= memory==MAP_FAILED && errno==EPERM;if(memory!=MAP_FAILED)munmap(memory,4096);
+    }
+    close(fd);
+    errno=0;fd=open("/cache/db/trivy.db",O_RDWR);checks[16] &= fd<0 && errno==EROFS;if(fd>=0)close(fd);
+  }
+#endif
   const char *names[]={"no_new_privileges","seccomp","no_capabilities","inet_denied","unix_denied","fork_denied","new_namespace_denied","mount_denied","source_readonly","host_paths_absent","shared_memory_denied","writable_memory_bounded",
 #ifdef AEGIS_SEMGREP_PROFILE
     "virtual_memory_bounded","root_readonly","inherited_handles_closed","scratch_noexec"
 #else
     "reserved_virtual_memory_cannot_bypass_data_limit"
+#endif
+#ifdef AEGIS_TRIVY_PROFILE
+    ,"root_readonly","inherited_handles_closed","scratch_readonly","database_shared_mapping_cannot_become_writable"
 #endif
   };
   int ok=1;printf("{\"checks\":{");for(unsigned n=0;n<CHECK_COUNT;n++){if(n)printf(",");printf("\"%s\":%s",names[n],checks[n]?"true":"false");ok &= checks[n];}printf("}}\n");

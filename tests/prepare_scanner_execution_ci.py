@@ -98,8 +98,11 @@ def main():
     subprocess.run(['/usr/bin/gcc','-static','-O2','-Wall','-Wextra','-DAEGIS_SEMGREP_PROFILE','tests/fixtures/native_scanner_probe.c',
                     '-o',str(ROOT/'semgrep-probe')],check=True,timeout=60)
     (ROOT/'semgrep-probe').chmod(0o555)
+    subprocess.run(['/usr/bin/gcc','-static','-O2','-Wall','-Wextra','-DAEGIS_TRIVY_PROFILE','tests/fixtures/native_scanner_probe.c',
+                    '-o',str(ROOT/'trivy-probe')],check=True,timeout=60)
+    (ROOT/'trivy-probe').chmod(0o555)
     proof={'source_commit':os.environ['AEGIS_TEST_COMMIT'],'source_manifest_sha256':hashlib.sha256(manifest).hexdigest(),
-           'binary_sha256':{name:file_sha(ROOT/name) for name in ('gitleaks','trivy','semgrep-core','nuclei','native-probe','semgrep-probe')},
+           'binary_sha256':{name:file_sha(ROOT/name) for name in ('gitleaks','trivy','semgrep-core','nuclei','native-probe','semgrep-probe','trivy-probe')},
            'database_sha256':{name:file_sha(target/name) for name in ('trivy.db','metadata.json')},
            'database_metadata':json.loads((target/'metadata.json').read_bytes()),'database_repository':'ghcr.io/aquasecurity/trivy-db:2',
            'semgrep_wheel_sha256':wheel['digests']['sha256']}

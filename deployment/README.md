@@ -72,6 +72,11 @@ read-only system/code/policy/source trees, and private temporary directories.
 Their writable paths are restricted to each role's required private state.
 `PrivateUsers` and `RestrictNamespaces` are deliberately absent: remapping peer
 UIDs or blocking nested namespaces would break AEGIS's existing enforcement.
+`ProtectKernelModules` is also omitted: its locked child mount beneath `/usr`
+prevents the worker's deliberately nonrecursive read-only runtime bind. Module
+changes remain denied by the empty capability sets, no-new-privileges setting
+and worker syscall policy. The package does not import host submounts or weaken
+the worker's namespace restrictions to accommodate systemd.
 
 ## Supply separate signed authority
 

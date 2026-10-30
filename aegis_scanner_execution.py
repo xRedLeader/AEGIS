@@ -219,7 +219,7 @@ class ScannerExecutionSupervisor(ScannerImportSupervisor):
                        'stdout_sha256':hashes['stdout'].hexdigest(),'stderr_sha256':hashes['stderr'].hexdigest(),
                        'virtual_memory_limit_bytes':(1 if profile=='semgrep-core-v1.125.0' else 8)*1024**3,'writable_data_limit_bytes':512*1024**2,
                        'process_thread_limit':32 if profile=='semgrep-core-v1.125.0' else 64,
-                       'cpu_limit_seconds':policy['seconds'],'scratch_limit_bytes':8*1024**2}
+                       'cpu_limit_seconds':policy['seconds'],'scratch_limit_bytes':0 if profile=='trivy-sbom-v0.76.1' else 8*1024**2}
                 os.lseek(output_fd,0,os.SEEK_SET);raw=os.read(output_fd,524289);partial_sha=hashlib.sha256(raw).hexdigest()
                 require(exit_code==0 and b'"status":"NATIVE_OFFLINE_BOUNDARY_ENTERED"' in head.split(b'\n',1)[0],'native scanner failed or boundary receipt missing')
                 require(0<len(raw)<=524288,'native scanner report empty or oversized')
