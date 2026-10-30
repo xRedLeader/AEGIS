@@ -36,6 +36,17 @@ MAX_ARTIFACTS=131072
 LIBC=ctypes.CDLL(None,use_errno=True)
 
 
+def report_observed_at(raw,profile,started_at,finished_at):
+    if profile=='trivy-sbom-v0.76.1':
+        from aegis_extended_scanner_adapters import _stamp
+        report=strict_json(raw);require(isinstance(report,dict),'native Trivy report must be an object')
+        observed=_stamp(report.get('CreatedAt'))
+        require(_stamp(started_at.isoformat())<=observed<=_stamp(finished_at.isoformat()),
+                'native Trivy report time is outside its execution interval')
+        return datetime.fromtimestamp(observed//1_000_000_000,timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    return finished_at.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
 def sealed_file(name,raw,executable=False):
     fd=os.memfd_create(name,os.MFD_CLOEXEC|os.MFD_ALLOW_SEALING)
     try:
@@ -198,6 +209,7 @@ class ScannerExecutionSupervisor(ScannerImportSupervisor):
                     self._event(db,{'type':'scanner_execution_started','engagement_id':eid,'run_id':run_id,'profile':policy['profile'],
                                    'input_sha256':digest(identity),'configuration_sha256':policy['configuration']['sha256']})
                     db.commit()
+                started_at=datetime.now(timezone.utc)
                 worker=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd='/',
                                         env={'PATH':'/usr/bin:/bin'},pass_fds=(binary_fd,config_fd,input_fd)+(() if database_fd is None else (database_fd,)),start_new_session=True,preexec_fn=death_signal)
                 totals={'stdout':0,'stderr':0};hashes={name:hashlib.sha256() for name in totals};head=b''
@@ -214,7 +226,9 @@ class ScannerExecutionSupervisor(ScannerImportSupervisor):
                             if name=='stdout':os.write(output_fd,chunk)
                             if name=='stderr' and len(head)<1024:head=(head+chunk)[:1024]
                 exit_code=worker.wait(timeout=1)
+                finished_at=datetime.now(timezone.utc)
                 stats={'elapsed_ms':int((time.monotonic()-started)*1000),'exit_status':exit_code,
+                       'started_at_utc':started_at.isoformat(),'finished_at_utc':finished_at.isoformat(),
                        'stdout_bytes':totals['stdout'],'stderr_bytes':totals['stderr'],
                        'stdout_sha256':hashes['stdout'].hexdigest(),'stderr_sha256':hashes['stderr'].hexdigest(),
                        'virtual_memory_limit_bytes':(1 if profile=='semgrep-core-v1.125.0' else 8)*1024**3,'writable_data_limit_bytes':512*1024**2,
@@ -223,7 +237,7 @@ class ScannerExecutionSupervisor(ScannerImportSupervisor):
                 os.lseek(output_fd,0,os.SEEK_SET);raw=os.read(output_fd,524289);partial_sha=hashlib.sha256(raw).hexdigest()
                 require(exit_code==0 and b'"status":"NATIVE_OFFLINE_BOUNDARY_ENTERED"' in head.split(b'\n',1)[0],'native scanner failed or boundary receipt missing')
                 require(0<len(raw)<=524288,'native scanner report empty or oversized')
-                observed=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ');name,version,schema=PROFILES[policy['profile']]
+                observed=report_observed_at(raw,profile,started_at,finished_at);name,version,schema=PROFILES[policy['profile']]
                 admission={'schema_version':1,'configured':True,'engagement_id':eid,'detector':{'name':name,'version':version,'report_schema':schema},
                     'configuration':{'path':str(Path(info['report_directory'])/'runs'/run_id/'scanner-config.bin'),'sha256':policy['configuration']['sha256']},
                     'report_sha256':partial_sha,'observed_at_utc':observed,'max_age_seconds':3600,'input':policy['input'],

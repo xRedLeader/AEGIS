@@ -1,12 +1,13 @@
 """Governed native profile admission rejects unsafe operator configuration."""
 import hashlib
+from datetime import datetime,timezone
 import os
 from pathlib import Path
 import unittest
 import uuid
 from unittest.mock import patch
 
-from aegis_scanner_execution import validate_execution,_rules_only,GITLEAKS_SHA256,sealed_file,ScannerExecutionSupervisor
+from aegis_scanner_execution import validate_execution,_rules_only,GITLEAKS_SHA256,sealed_file,ScannerExecutionSupervisor,report_observed_at
 from aegis_audit_contract import canonical
 from aegis_scanner_sandbox import launch
 from aegis_sandbox import SandboxFailure
@@ -14,6 +15,16 @@ from aegis_supervisor import ExecutionDenied
 
 
 class NativePolicyTests(unittest.TestCase):
+    def test_trivy_report_time_survives_second_boundary_without_accepting_stale_or_future_output(self):
+        start=datetime(2026,10,30,12,0,0,900000,tzinfo=timezone.utc)
+        finish=datetime(2026,10,30,12,0,1,100000,tzinfo=timezone.utc)
+        raw=canonical({'CreatedAt':'2026-10-30T12:00:00.999999999Z'})
+        self.assertEqual(report_observed_at(raw,'trivy-sbom-v0.76.1',start,finish),'2026-10-30T12:00:00Z')
+        for stamp in ('2026-10-30T12:00:00.899999999Z','2026-10-30T12:00:01.100000001Z',None):
+            with self.subTest(timestamp=stamp),self.assertRaises(ExecutionDenied):
+                report_observed_at(canonical({'CreatedAt':stamp}),'trivy-sbom-v0.76.1',start,finish)
+        self.assertEqual(report_observed_at(b'[]','gitleaks-dir-v8.24.3',start,finish),'2026-10-30T12:00:01Z')
+
     def setUp(self):
         self.policy={'schema_version':1,'configured':True,'engagement_id':'fixture','operation_id':str(uuid.uuid4()),
             'profile':'gitleaks-dir-v8.24.3','executable':{'path':'/opt/tools/gitleaks','sha256':GITLEAKS_SHA256},
